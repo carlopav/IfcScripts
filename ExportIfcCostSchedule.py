@@ -58,9 +58,9 @@ class SchedulePDF(FPDF):
         self.line(200,  10, 200,  287)
         self.line(10,  10, 200,  10)
         self.line(10,  287, 200,  287)
-        
-        
+                
         self.restore_text_default()
+        
         
     def header(self):
         """Header on each page"""
@@ -324,8 +324,6 @@ class SchedulePDF(FPDF):
 
 
 
-    
-
 def print_schedule_to_pdf(context, filepath, exporter):
     
     def print_nested_cost_items(file, pdf, parent, parent_counter):
@@ -369,11 +367,12 @@ def print_schedule_to_pdf(context, filepath, exporter):
         
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     
-    pdf.draw_summary()
+    if exporter.should_print_summary: pdf.draw_summary()
     
     pdf.output(filepath)
     print(f"File creato")
     return {'FINISHED'}
+
 
 
 # BLENDER INTERFACE TO SELECT FILE AND OPTIONS
@@ -431,7 +430,12 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
         description="Export the full list of quantities",
         default=True,
     )   
-     
+
+    should_print_summary: BoolProperty(
+        name="Sould print summary",
+        description="Print summary at the end of the document",
+        default=True,
+    )   
 
     
     '''should_print_categories_to_new_page: BoolProperty(
