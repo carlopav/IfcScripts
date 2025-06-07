@@ -23,6 +23,7 @@ class SchedulePDF(FPDF):
         self.should_print_single_quantities = True
         
         self.quantity_value_attributes = ['AreaValue', 'VolumeValue', 'LengthValue', 'CountValue', 'WeightValue', 'TimeValue']
+        self.has_cover = False
         
         if self.cost_schedule.PredefinedType == 'PRICEDBILLOFQUANTITIES':
             self.col_headers = ['N°', 'Description', 'n°', 'a', 'b', 'c/w', 'Quantity', 'Price', 'Total']
@@ -36,48 +37,89 @@ class SchedulePDF(FPDF):
             print("Not supported yet")
             return
         
+        
     def restore_text_default(self):
         self.set_font('Arial', '', 8)
         
+        
+    def add_formatted_page(self):
+        self.line(10, self.get_y(), 200, self.get_y())
+        self.add_page()
+        self.draw_table_header()
+            
+        
+    def draw_cover_page(self):
+        self.has_cover = True
+        self.add_page()
+        self.set_margins(10, 10, 287)
+        self.set_font('Arial', '', 30)
+        self.cell(0, 10, self.project.Name, align='C')
+        self.line(10,  10, 10,  287)
+        self.line(200,  10, 200,  287)
+        self.line(10,  10, 200,  10)
+        self.line(10,  287, 200,  287)
+        
+        
+        self.restore_text_default()
+        
     def header(self):
         """Header on each page"""
-        self.set_margins(10, 10, 10)
-        
-        self.set_font('Arial', '', 10)
-        self.cell(0, 10, self.project.Name, align='L')
-        self.set_xy(10, 10)  # Torna all'inizio della riga
-        self.cell(0, 10, self.cost_schedule.Name, align='R')
-        self.restore_text_default()
-        self.ln(15)  # Spazio dopo l'intestazione
+        if self.has_cover and self.page_no() > 1:
+            
+            self.set_margins(10, 10, 10)
+            
+            self.set_font('Arial', '', 10)
+            self.cell(0, 10, self.project.Name, align='L')
+            self.set_xy(10, 10)  # Torna all'inizio della riga
+            self.cell(0, 10, self.cost_schedule.Name, align='R')
+            self.restore_text_default()
+            self.ln(15)  # Spazio dopo l'intestazione
         
         
     def footer(self):
         """Footer on each page"""
-        self.set_y(-15)  # Posizione a 15mm dal fondo
-        self.set_font('Arial', '', 8)
+        if self.has_cover and self.page_no() == 1:
+            return
         
-        # Date
-        date_str = datetime.now().strftime("%d/%m/%Y")
-        self.cell(0, 10, date_str, align='L')
+        elif self.has_cover and self.page_no() > 1:
+            self.set_y(-15)  # Posizione a 15mm dal fondo
+            self.set_font('Arial', '', 8)
         
-        # Page number
-        self.set_x(10)
-        page_str = f"page {self.page_no()}/{{nb}}"
-        self.cell(0, 10, page_str, align='R')
+            # Date
+            date_str = datetime.now().strftime("%d/%m/%Y")
+            self.cell(0, 10, date_str, align='L')
+            
+            # Page number
+            self.set_x(10)
+            page_str = f"page {self.page_no()-1}" # TODO: non riesco ad avere il totale pagine corretto se ho la copertina
+            self.cell(0, 10, page_str, align='R') 
+            
+        elif not self.has_cover:
+            self.set_y(-15)  # Posizione a 15mm dal fondo
+            self.set_font('Arial', '', 8)
+        
+            # Date
+            date_str = datetime.now().strftime("%d/%m/%Y")
+            self.cell(0, 10, date_str, align='L')
+            
+            # Page number
+            self.set_x(10)
+            page_str = f"page {self.page_no()}/{{nb}}"
+            self.cell(0, 10, page_str, align='R')
         
         
     def draw_category(self, index, name):
         self.set_font('Arial', 'B', 10)
-        self.add_table_row([index, name, "", "", "", "", "", ""], self.col_widths)
+        self.add_table_row([index, name, "", "", "", "", "", ""])
     
     
     def draw_cost_item(self, index, name, rate_id):
         if self.cost_schedule.PredefinedType == 'PRICEDBILLOFQUANTITIES':
             self.set_font('Arial', 'B', 8)
-            self.add_table_row([index, name, "", "", "", "", "", ""], self.col_widths)
+            self.add_table_row([index, name, "", "", "", "", "", ""])
             if rate_id:
                 self.set_font('Arial', 'I', 8)
-                self.add_table_row(["",  rate_id, "", "", "", "", "", "", ""], self.col_widths)
+                self.add_table_row(["",  rate_id, "", "", "", "", "", "", ""])
         else:
             pass
 
@@ -85,7 +127,7 @@ class SchedulePDF(FPDF):
     def draw_description(self, description):
         self.restore_text_default()
         if description:
-            self.add_table_row(["", description, "", "", "", "", "", ""], self.col_widths)
+            self.add_table_row(["", description, "", "", "", "", "", ""])
         pass
     
     
@@ -102,7 +144,7 @@ class SchedulePDF(FPDF):
                     if not quantity_value:
                         quantity_value = 'error'
             if print_each_quantity:
-                self.add_table_row(["", "- "+ quantity_name, "", "", "", "", quantity_value, ""], self.col_widths)
+                self.add_table_row(["", "- "+ quantity_name, "", "", "", "", quantity_value, ""])
             try: 
                 if unit == '': 
                     unit = ios.util.unit.get_property_unit(quantity, self.file).Name
@@ -129,7 +171,7 @@ class SchedulePDF(FPDF):
             total_cost = 0.0
             
         self.line(10 + sum(self.col_widths)-sum(self.col_widths[-3:]),  self.get_y(), 10 + sum(self.col_widths),  self.get_y())
-        self.add_table_row(["", "Sum "+unit, "" , "", "", "", "%.2f" % (round(total_quantity,2)),str(cost), str(round(total_quantity*cost,2))], self.col_widths)
+        self.add_table_row(["", "Sum "+unit, "" , "", "", "", "%.2f" % (round(total_quantity,2)),str(cost), str(round(total_quantity*cost,2))])
             
 
     def draw_summary(self):
@@ -138,16 +180,22 @@ class SchedulePDF(FPDF):
         self.draw_table_header()
         root_costs = list(ios.util.cost.get_root_cost_items(self.cost_schedule))
         self.set_font('Arial', '', 10)
-        self.add_table_row(["", "", "", "", "", "", "", ""], self.col_widths)
         counter = 1
+        total_cost = 0.0
         for root_cost in root_costs:
             try:
                 cost_values = ios.util.cost.get_cost_values(root_cost)
                 cost_value = cost_values[0]["label"]
+                total_cost += float(cost_value[:-8])
             except:
                 cost_value = "0.00"
-            self.add_table_row([str(counter), root_cost.Name , "", "", "", "", "","", cost_value[:-8]], self.col_widths)
+            self.add_table_row([str(counter), root_cost.Name , "", "", "", "", "","", cost_value[:-8]])
             counter += 1
+        self.add_table_row(["", "" , "", "", "", "", "","", ""])
+        self.set_font('Arial', 'B', 10)
+        self.add_table_row(['', 'Total' , "", "", "", "", "","", "%.2f" % (round(total_cost,2))])
+        self.add_table_row(["", "" , "", "", "", "", "","", ""])
+        self.line(10, self.get_y(), 200, self.get_y())
     
         
     def draw_table_header(self):
@@ -157,24 +205,21 @@ class SchedulePDF(FPDF):
         self.set_font('Arial', 'B', 8)
         self.set_fill_color(220, 220, 220)
         
-        col_widths = self.col_widths
-        headers = self.col_headers
-        
-        for header, width in zip(headers, col_widths):
+        for header, width in zip(self.col_headers, self.col_widths):
             self.cell(width, 8, header, border=1, align='C', fill=True)
         self.ln()
         self.restore_text_default()
-        return col_widths
+        self.add_table_row(["", "", "", "", "", "", "", ""])
     
     
     def get_remaining_space(self):
         return self.h - self.get_y() - self.bottom_margin
     
     
-    def wrap_text_for_columns(self, data, col_widths):
+    def wrap_text_for_columns(self, data):
         wrapped_columns = []
         
-        for i, (text, width) in enumerate(zip(data, col_widths)):
+        for i, (text, width) in enumerate(zip(data, self.col_widths)):
             # Calcola caratteri per riga basato sulla larghezza colonna
             chars_per_line = max(1, int(width * 0.4))
             
@@ -189,11 +234,11 @@ class SchedulePDF(FPDF):
         return wrapped_columns
     
     
-    def add_table_row(self, data, col_widths, type = 'default'):
+    def add_table_row(self, data):
         """Add a line with possible text interruption to new page"""
         
         # Prepara il testo wrappato
-        wrapped_columns = self.wrap_text_for_columns(data, col_widths)
+        wrapped_columns = self.wrap_text_for_columns(data)
         
         # Trova la colonna con più righe
         max_lines = max(len(lines) for lines in wrapped_columns)
@@ -207,8 +252,7 @@ class SchedulePDF(FPDF):
             
             if space_available < self.row_height:
                 # Non c'è spazio, nuova pagina
-                self.add_page()
-                col_widths = self.draw_table_header()
+                self.add_formatted_page()
                 continue
             
             # Calcola quante righe possiamo disegnare
@@ -217,7 +261,7 @@ class SchedulePDF(FPDF):
             lines_to_draw = min(max_lines_in_page, remaining_lines)
             
             # Disegna le righe
-            self.draw_table_section(wrapped_columns, col_widths, lines_processed, lines_to_draw, type)
+            self.draw_table_section(wrapped_columns, lines_processed, lines_to_draw, type)
             
             lines_processed += lines_to_draw
             
@@ -226,18 +270,17 @@ class SchedulePDF(FPDF):
                 break
             
             # Altrimenti vai alla pagina successiva
-            self.add_page()
-            col_widths = self.draw_table_header()
+            self.add_formatted_page()
     
     
-    def draw_table_section(self, wrapped_columns, col_widths, start_line, num_lines, type):
+    def draw_table_section(self, wrapped_columns, start_line, num_lines, type):
         """Disegna una sezione della tabella"""
         start_y = self.get_y()
         section_height = num_lines * self.row_height
         
         # Disegna i bordi esterni delle celle
         x_offset = 10
-        for width in col_widths:
+        for width in self.col_widths:
             # Bordo sinistro
             self.line(x_offset, start_y, x_offset, start_y + section_height)
             x_offset += width
@@ -250,8 +293,8 @@ class SchedulePDF(FPDF):
         # self.line(10, start_y + section_height, 10 + sum(col_widths), start_y + section_height)  # Bottom
         
         # Riempie il contenuto
-        for col_idx, (lines, width) in enumerate(zip(wrapped_columns, col_widths)):
-            x_pos = 10 + sum(col_widths[:col_idx])
+        for col_idx, (lines, width) in enumerate(zip(wrapped_columns, self.col_widths)):
+            x_pos = 10 + sum(self.col_widths[:col_idx])
             
             # Allineamento
             if col_idx in [0, 3, 4, 5, 6, 7, 8]:  # Colonne numeriche
@@ -285,7 +328,7 @@ class SchedulePDF(FPDF):
 
 def print_schedule_to_pdf(context, filepath, exporter):
     
-    def print_nested_cost_items(file, pdf, col_widths, parent, parent_counter):
+    def print_nested_cost_items(file, pdf, parent, parent_counter):
         childs = list(ios.util.cost.get_nested_cost_items(parent))
         counter=1
         for cost_item in childs:
@@ -297,9 +340,9 @@ def print_schedule_to_pdf(context, filepath, exporter):
             unit = pdf.draw_quantities(quantities = cost_item.CostQuantities, print_each_quantity=exporter.should_print_each_quantity)
             pdf.draw_cost_item_totals(cost_item, unit)
             
-            pdf.add_table_row(["", "", "" , "", "", "", "", "", ""], col_widths)
+            pdf.add_table_row(["", "", "" , "", "", "", "", "", ""])
             
-            print_nested_cost_items(file, pdf,col_widths, cost_item, index)
+            print_nested_cost_items(file, pdf, cost_item, index)
             counter += 1
             
         return childs
@@ -309,17 +352,22 @@ def print_schedule_to_pdf(context, filepath, exporter):
     schedule=file.by_type("IfcCostSchedule")[int(exporter.chosen_schedule)]
     
     pdf = SchedulePDF(file, project, schedule)
-    pdf.add_page()
+        
+    if exporter.should_print_cover:
+        pdf.draw_cover_page()
     
-    col_widths = pdf.draw_table_header()
+    pdf.add_page()
+    pdf.draw_table_header()
     
     root_costs = list(ios.util.cost.get_root_cost_items(schedule))
     counter = 1
     for root_cost in root_costs:
         counter
         pdf.draw_category(str(counter), root_cost.Name)
-        print_nested_cost_items(file, pdf, col_widths, root_cost, str(counter))
+        print_nested_cost_items(file, pdf, root_cost, str(counter))
         counter += 1
+        
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     
     pdf.draw_summary()
     
@@ -367,6 +415,11 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
         default='0',
     )
 
+    should_print_cover: BoolProperty(
+        name="Sould print document cover",
+        description="Create a cover page with project data",
+        default=True,
+    )
     should_print_description: BoolProperty(
         name="Sould print description",
         description="Export the full description if present",
@@ -377,7 +430,9 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
         name="Sould print each quantity",
         description="Export the full list of quantities",
         default=True,
-    )
+    )   
+     
+
     
     '''should_print_categories_to_new_page: BoolProperty(
         name="Categories to new page",
