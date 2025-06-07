@@ -36,6 +36,8 @@ class SchedulePDF(FPDF):
             print("Not supported yet")
             return
         
+    def restore_text_default(self):
+        self.set_font('Arial', '', 8)
         
     def header(self):
         """Header on each page"""
@@ -45,6 +47,7 @@ class SchedulePDF(FPDF):
         self.cell(0, 10, self.project.Name, align='L')
         self.set_xy(10, 10)  # Torna all'inizio della riga
         self.cell(0, 10, self.cost_schedule.Name, align='R')
+        self.restore_text_default()
         self.ln(15)  # Spazio dopo l'intestazione
         
         
@@ -80,13 +83,14 @@ class SchedulePDF(FPDF):
 
     
     def draw_description(self, description):
-        self.set_font('Arial', '', 8)
+        self.restore_text_default()
         if description:
             self.add_table_row(["", description, "", "", "", "", "", ""], self.col_widths)
         pass
     
     
-    def draw_quantities(self, quantities):
+    def draw_quantities(self, quantities, print_each_quantity=True):
+        self.set_font('Arial', '', 8)
         unit = ''
         if not quantities: return unit
         for quantity in quantities:
@@ -97,7 +101,8 @@ class SchedulePDF(FPDF):
                     quantity_value = "%.2f" % round(getattr(quantity, attr),2)
                     if not quantity_value:
                         quantity_value = 'error'
-            self.add_table_row(["", "- "+ quantity_name, "", "", "", "", quantity_value, ""], self.col_widths)
+            if print_each_quantity:
+                self.add_table_row(["", "- "+ quantity_name, "", "", "", "", quantity_value, ""], self.col_widths)
             try: 
                 if unit == '': 
                     unit = ios.util.unit.get_property_unit(quantity, self.file).Name
@@ -107,6 +112,7 @@ class SchedulePDF(FPDF):
     
     def draw_cost_item_totals(self, cost_item, unit):
         # TODO: trovare un modo più serio per calcolare il totale della voce
+        self.set_font('Arial', '', 8)
         total_quantity = ios.util.cost.get_total_quantity(cost_item)
         if not total_quantity: total_quantity = 0.0
         costs = cost_item.CostValues
@@ -157,7 +163,7 @@ class SchedulePDF(FPDF):
         for header, width in zip(headers, col_widths):
             self.cell(width, 8, header, border=1, align='C', fill=True)
         self.ln()
-        self.set_font('Arial', '', 8)
+        self.restore_text_default()
         return col_widths
     
     
@@ -277,7 +283,7 @@ class SchedulePDF(FPDF):
 
     
 
-def create_test_BOQ(context, filepath, exporter):
+def print_schedule_to_pdf(context, filepath, exporter):
     
     def print_nested_cost_items(file, pdf, col_widths, parent, parent_counter):
         childs = list(ios.util.cost.get_nested_cost_items(parent))
@@ -286,8 +292,9 @@ def create_test_BOQ(context, filepath, exporter):
             
             index = parent_counter+"."+str(counter)
             pdf.draw_cost_item(index = index, name = cost_item.Name, rate_id = cost_item.Identification)
-            pdf.draw_description(description = cost_item.Description)
-            unit = pdf.draw_quantities(quantities = cost_item.CostQuantities)
+            if exporter.should_print_description:
+                pdf.draw_description(description = cost_item.Description)
+            unit = pdf.draw_quantities(quantities = cost_item.CostQuantities, print_each_quantity=exporter.should_print_each_quantity)
             pdf.draw_cost_item_totals(cost_item, unit)
             
             pdf.add_table_row(["", "", "" , "", "", "", "", "", ""], col_widths)
@@ -299,7 +306,7 @@ def create_test_BOQ(context, filepath, exporter):
     
     file = IfcStore.get_file()
     project = file.by_type("IfcProject")[0]
-    schedule=file.by_type("IfcCostSchedule")[0]
+    schedule=file.by_type("IfcCostSchedule")[int(exporter.chosen_schedule)]
     
     pdf = SchedulePDF(file, project, schedule)
     pdf.add_page()
@@ -321,8 +328,8 @@ def create_test_BOQ(context, filepath, exporter):
     return {'FINISHED'}
 
 
-# ExportHelper is a helper class, defines filename and
-# invoke() function which calls the file selector.
+# BLENDER INTERFACE TO SELECT FILE AND OPTIONS
+
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
@@ -344,30 +351,42 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
 
     # List of operator properties, the attributes will be assigned
     # to the class instance from the operator settings before calling.
+    
+    file = IfcStore.get_file()
+    schedules=file.by_type("IfcCostSchedule")
+    counter = 0
+    schedule_names = ()
+    for schedule in schedules:
+        schedule_names += ((str(counter), schedule.Name, '',),)
+        counter +=1
+    
+    chosen_schedule: EnumProperty(
+        name="",
+        description="Choose between two items",
+        items=schedule_names,
+        default='0',
+    )
+
     should_print_description: BoolProperty(
         name="Sould print description",
         description="Export the full description if present",
         default=True,
     )
     
-    should_print_categories_to_new_page: BoolProperty(
-        name="Categories to new page",
-        description="Export the full description if present",
+    should_print_each_quantity: BoolProperty(
+        name="Sould print each quantity",
+        description="Export the full list of quantities",
         default=True,
     )
     
-    '''type: EnumProperty(
-        name="Enum",
-        description="Choose between two items",
-        items=(
-            ('OPT_A', "First Option", "Description one"),
-            ('OPT_B', "Second Option", "Description two"),
-        ),
-        default='OPT_A',
+    '''should_print_categories_to_new_page: BoolProperty(
+        name="Categories to new page",
+        description="Export the full description if present",
+        default=True,
     )'''
 
     def execute(self, context):
-        return create_test_BOQ(context, self.filepath, self)#, self.should_print_description)
+        return print_schedule_to_pdf(context, self.filepath, self)#, self.should_print_description)
 
 
 # Only needed if you want to add into a dynamic menu
