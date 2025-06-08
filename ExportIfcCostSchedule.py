@@ -51,12 +51,38 @@ class SchedulePDF(FPDF):
     def draw_cover_page(self):
         self.has_cover = True
         self.add_page()
-        self.set_margins(10, 10, 287)
-        self.set_font('Arial', '', 30)
-        self.cell(0, 10, self.project.Name, align='C')
-        self.line(10,  10, 10,  287)
-        self.line(200,  10, 200,  287)
-        self.line(10,  10, 200,  10)
+        
+        #header        
+        self.set_y(10)
+        self.set_font('Arial', 'B', 18)
+        self.cell(w=0, h=30, txt=self.cost_schedule.Name, border="LTRB", align='C')
+        self.set_font('Arial', '', 12)
+        
+        #body
+        self.set_margins(left=12, top=12, right=12)
+        self.set_y(150)
+        self.set_font('Arial', '', 12)
+        self.cell(w=50, h=5, txt="Project:", align='L')
+        self.multi_cell(w=140, h=5, txt=self.project.Name, align='L')
+        self.ln()
+        self.cell(w=50, h=5, txt="Description:", align='L')
+        self.multi_cell(w=140, h=5, txt=self.project.Description, align='L')
+        self.ln()
+        self.cell(w=50, h=5, txt="Phase:", align='L')
+        self.multi_cell(w=140, h=5, txt=self.project.Phase, align='L')
+        
+        #footer
+        self.set_y(240)
+        self.cell(w=50, h=5, txt="Date:", align='L')
+        self.cell(w=140, h=5, txt=datetime.now().strftime("%d/%m/%Y"), align='L')
+        self.set_y(260)
+        self.cell(w=50, h=5, txt="Author:", align='L')
+        self.cell(w=140, h=5, txt="..................................................", align='L')
+        
+        #body
+        self.line(10,  42, 10,  287)
+        self.line(200,  42, 200,  287)
+        self.line(10,  42, 200,  42)
         self.line(10,  287, 200,  287)
                 
         self.restore_text_default()
