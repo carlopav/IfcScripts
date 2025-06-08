@@ -169,8 +169,25 @@ class SchedulePDF(FPDF):
                     quantity_value = "%.2f" % round(getattr(quantity, attr),2)
                     if not quantity_value:
                         quantity_value = 'error'
+            # evaluate formula if present (TODO: make it more robust, at the moment formula should be
+            #                                    formatted in this way: x*y*z*w; also should check
+            #                                    if quantity value is corresponding)
+            formula = getattr(quantity, "Formula")
+            if formula:
+                formula_components = []
+                try: 
+                    list=formula.split("*")
+                    for txt in list:
+                        formula_components.append("%.2f" % round(float(txt), 2))
+                    if len(formula_components) != 4:
+                        formula_components = ["","","",""]
+                except:
+                    formula_components = ["","","",""]
+            else: 
+                formula_components = ["","","",""]
+            # print quantities
             if print_each_quantity:
-                self.add_table_row(["", "- "+ quantity_name, "", "", "", "", quantity_value, ""])
+                self.add_table_row(["", "- "+ quantity_name, formula_components[0], formula_components[1], formula_components[2], formula_components[3], quantity_value, ""])
             try: 
                 if unit == '': 
                     unit = ios.util.unit.get_property_unit(quantity, self.file).Name
@@ -414,7 +431,7 @@ from bpy.types import Operator
 class ExportIfcCostSchedule(Operator, ExportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
     bl_idname = "export_test.some_data"  # important since its how bpy.ops.import_test.some_data is constructed
-    bl_label = "Export Some Data"
+    bl_label = "Export IfcCostSchedule"
 
     # ExportHelper mix-in class uses this.
     filename_ext = ".pdf"
