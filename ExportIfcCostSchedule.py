@@ -178,7 +178,7 @@ class SchedulePDF(FPDF):
         return unit
     
     
-    def draw_cost_item_totals(self, cost_item, unit):
+    def draw_cost_item_totals(self, cost_item, unit, should_print_rates=True):
         # TODO: trovare un modo più serio per calcolare il totale della voce
         self.set_font('Arial', '', 8)
         total_quantity = ios.util.cost.get_total_quantity(cost_item)
@@ -197,7 +197,10 @@ class SchedulePDF(FPDF):
             total_cost = 0.0
             
         self.line(10 + sum(self.col_widths)-sum(self.col_widths[-3:]),  self.get_y(), 10 + sum(self.col_widths),  self.get_y())
-        self.add_table_row(["", "Sum "+unit, "" , "", "", "", "%.2f" % (round(total_quantity,2)),str(cost), str(round(total_quantity*cost,2))])
+        if should_print_rates:
+            self.add_table_row(["", "Sum "+unit, "" , "", "", "", "%.2f" % (round(total_quantity,2)),str(cost), str(round(total_quantity*cost,2))])
+        else:
+            self.add_table_row(["", "Sum "+unit, "" , "", "", "", "%.2f" % (round(total_quantity,2)),"______", "______"])
             
 
     def draw_summary(self):
@@ -362,7 +365,7 @@ def print_schedule_to_pdf(context, filepath, exporter):
             if exporter.should_print_description:
                 pdf.draw_description(description = cost_item.Description)
             unit = pdf.draw_quantities(quantities = cost_item.CostQuantities, print_each_quantity=exporter.should_print_each_quantity)
-            pdf.draw_cost_item_totals(cost_item, unit)
+            pdf.draw_cost_item_totals(cost_item, unit, exporter.should_print_rates)
             
             pdf.add_table_row(["", "", "" , "", "", "", "", "", ""])
             
@@ -441,24 +444,30 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
     )
 
     should_print_cover: BoolProperty(
-        name="Sould print document cover",
+        name="Should print document cover",
         description="Create a cover page with project data",
         default=True,
     )
     should_print_description: BoolProperty(
-        name="Sould print description",
+        name="Should print description",
         description="Export the full description if present",
         default=True,
     )
     
     should_print_each_quantity: BoolProperty(
-        name="Sould print each quantity",
+        name="Should print each quantity",
         description="Export the full list of quantities",
         default=True,
     )   
-
+    
+    should_print_rates: BoolProperty(
+        name="Should print rates and totals",
+        description="Print rates and totals for each voice",
+        default=True,
+    )   
+    
     should_print_summary: BoolProperty(
-        name="Sould print summary",
+        name="Should print summary",
         description="Print summary at the end of the document",
         default=True,
     )   
