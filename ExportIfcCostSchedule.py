@@ -25,7 +25,7 @@ class SchedulePDF(FPDF):
         self.quantity_value_attributes = ['AreaValue', 'VolumeValue', 'LengthValue', 'CountValue', 'WeightValue', 'TimeValue']
         self.has_cover = False
         
-        if self.cost_schedule.PredefinedType == 'PRICEDBILLOFQUANTITIES':
+        if self.cost_schedule.PredefinedType == 'PRICEDBILLOFQUANTITIES' or self.cost_schedule.PredefinedType == 'UNPRICEDBILLOFQUANTITIES' :
             self.col_headers = ['N°', 'Description', 'n°', 'a', 'b', 'c/w', 'Quantity', 'Price', 'Total']
             self.col_widths = [15, 55, 15, 15, 15, 15, 20, 20, 20] # total width 190
             
@@ -140,7 +140,7 @@ class SchedulePDF(FPDF):
     
     
     def draw_cost_item(self, index, name, rate_id):
-        if self.cost_schedule.PredefinedType == 'PRICEDBILLOFQUANTITIES':
+        if self.cost_schedule.PredefinedType == 'PRICEDBILLOFQUANTITIES' or self.cost_schedule.PredefinedType == 'UNPRICEDBILLOFQUANTITIES':
             self.set_font('Arial', 'B', 8)
             self.add_table_row([index, name, "", "", "", "", "", ""])
             if rate_id:
@@ -214,10 +214,12 @@ class SchedulePDF(FPDF):
             total_cost = 0.0
             
         self.line(10 + sum(self.col_widths)-sum(self.col_widths[-3:]),  self.get_y(), 10 + sum(self.col_widths),  self.get_y())
-        if should_print_rates:
-            self.add_table_row(["", "Sum "+unit, "" , "", "", "", "%.2f" % (round(total_quantity,2)),str(cost), str(round(total_quantity*cost,2))])
-        else:
+        if should_print_rates == False or self.cost_schedule.PredefinedType == 'UNPRICEDBILLOFQUANTITIES':
+            # do not print rates and total
             self.add_table_row(["", "Sum "+unit, "" , "", "", "", "%.2f" % (round(total_quantity,2)),"______", "______"])
+        else:
+            # print rates and total
+            self.add_table_row(["", "Sum "+unit, "" , "", "", "", "%.2f" % (round(total_quantity,2)),str(cost), str(round(total_quantity*cost,2))])
             
 
     def draw_summary(self):
@@ -450,7 +452,7 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
     counter = 0
     schedule_names = ()
     for schedule in schedules:
-        schedule_names += ((str(counter), schedule.Name, '',),)
+        schedule_names += ((str(counter), schedule.Name + ' (' + schedule.PredefinedType + ')', '',),)
         counter +=1
     
     chosen_schedule: EnumProperty(
