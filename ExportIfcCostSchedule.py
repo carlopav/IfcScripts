@@ -463,7 +463,7 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
     should_print_cover: BoolProperty(
         name="Should print document cover",
         description="Create a cover page with project data",
-        default=True,
+        default=False,
     )
     should_print_description: BoolProperty(
         name="Should print description",
