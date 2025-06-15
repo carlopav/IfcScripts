@@ -454,7 +454,6 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
     for schedule in schedules:
         schedule_names += ((str(counter), schedule.Name + ' (' + schedule.PredefinedType + ')', '',),)
         counter +=1
-    
     chosen_schedule: EnumProperty(
         name="",
         description="Choose between two items",
@@ -497,11 +496,37 @@ class ExportIfcCostSchedule(Operator, ExportHelper):
         description="Export the full description if present",
         default=True,
     )'''
+    
+    
+    def draw(self, context):
+        """Disegna l'interfaccia delle opzioni"""
+        layout = self.layout
+        
+        # Sezione opzioni di export
+        box = layout.box()
+        box.label(text="Select Ifc Cost Schedule:")
+        box.prop(self, "chosen_schedule")
+        
+        
+        # Separatore
+        layout.separator()
 
+        box = layout.box()
+        box.label(text="Export properties:")
+        box.prop(self, "should_print_cover")
+        box.prop(self, "should_print_description")
+        box.prop(self, "should_print_each_quantity")
+        box.prop(self, "should_print_summary")
+
+        # Altro pulsante esempio
+        row = box.row()
+        row.operator("export_scene.reset_options", text="Reset Opzioni", icon='FILE_REFRESH')
+        
+        
     def execute(self, context):
         return print_schedule_to_pdf(context, self.filepath, self)#, self.should_print_description)
 
-
+    
 # Only needed if you want to add into a dynamic menu
 def menu_func_export(self, context):
     self.layout.operator(ExportIfcCostSchedule.bl_idname, text="IfcCostSchedule to PDF")
