@@ -1,0 +1,11 @@
+Id,Hierarchy,Index,Identification,Name,Quantity,Unit,RateSubtotal,TotalPrice,General Cost
+68,1,1,,IMPIANTO CANTIERE,,,0.0,3610.0,
+74,1.1,2,NP01,Baracca di cantiere,1.0,,600.0,0.0,600.0
+78,1.2,2,NP02,Impianto elettrico di cantiere,1.0,,450.0,0.0,450.0
+79,1.3,2,NP03,WC Chimico,16.0,,160.0,0.0,160.0
+70,1,1,,DEMOLIZIONI E SCAVI,,,0.0,0.0,
+72,1,1,,OPERE STRUTTURALI,,,0.0,6942.9401000400285,
+86,1.1,2,,OPERE STRUTTURALI IN C.A.,,,0.0,6942.9401000400285,
+88,1.1.1,3,,Magrone,13.079438,VOLUMEUNIT / CUBIC_METRE,190.0,0.0,190.0
+90,1.1.2,3,,Platea,10.57958,m3,130.0,0.0,130.0
+91,1.1.3,3,,Strutture in elevazione,12.8436,m3,240.0,0.0,240.0
