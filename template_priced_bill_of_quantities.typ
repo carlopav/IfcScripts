@@ -1,7 +1,6 @@
-// The project function defines how your document looks.
-// It takes your content and some metadata and formats it.
-// Go ahead and customize it to your liking!
-
+// PRICED BILL OF QUANTITIES TEMPLATE
+// author: carlo pavan
+// year: 2025
 
 #let euro(num) = {
   str(calc.round(float(num), digits: 2)) + " €"
