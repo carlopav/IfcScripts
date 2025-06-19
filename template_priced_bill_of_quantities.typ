@@ -4,7 +4,7 @@
 
 // custom cell styles
 #let total-cell-style = (stroke: (top: 0.25pt + gray))
-#let root-cost-cell-style = (stroke: (bottom: (dash: "dotted"), top: (dash: "dotted")))
+#let root-cost-cell-style = (stroke: (bottom: (dash: "dotted")), fill: gray.transparentize(90%))
 
 
 // custom numbers styles
@@ -78,17 +78,28 @@
     let new-cell = ()
 
     if row.at("TotalPrice") != "0.0"{
-      // Nuovo
+      // NEW ROOT COST / CHAPTER
+      new-cell.push([#colbreak()]) // new root cost to new page: DOES NOT WORK
+      new-cell.push([])
+      new-cell.push([])
+      new-cell.push([])
+      new-cell.push([])
+      new-cell.push([])
+      new-cell.push([])      
+      new-cell.push([])
+      new-cell.push([])
+      
       new-cell.push(table.cell(..root-cost-cell-style)[#row.at("Hierarchy")])
-      new-cell.push(table.cell(..root-cost-cell-style)[#strong(row.at("Name")) #linebreak() #row.at("Description", default:lorem(10))])
+      new-cell.push(table.cell(..root-cost-cell-style)[#strong(row.at("Name")) #linebreak() #row.at("Description", default:lorem(5))])
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
-      new-cell.push(table.cell(..root-cost-cell-style, align: bottom)[#format-decimal(float(row.at("TotalPrice")), places: 2)])
+      new-cell.push(table.cell(..root-cost-cell-style)[#strong(format-decimal(float(row.at("TotalPrice")), places: 2))])
     } else {
+        // NEW COST ITEM
         if row.at("Identification") != "" {
         new-cell.push(row.at("Hierarchy"))
         new-cell.push(strong(row.at("Name")) + "\n" + text(font: "Liberation Mono", row.at("Identification")))
@@ -144,7 +155,6 @@
     
     new_rows.push(new-cell)
   }
-  
   table(
     columns: (18mm,1fr, 12mm,12mm,12mm,12mm, 20mm, 20mm, 25mm),
     align: (center, left, center, center, center, center, right, right, right),
@@ -225,7 +235,7 @@
     background: 
     place( top + left, dx: 15mm, dy: 25mm,
       table(columns: (18mm,54mm, 12mm,12mm,12mm,12mm, 20mm, 20mm, 25mm),
-        rows: (6mm, 245mm),
+        rows: (6mm, 248mm),
         align: (center, left, center, center, center, center, center, center, center),
         stroke: (x, y) => (
           left: if x == 0 { 1pt } else { 0.25pt },
@@ -249,7 +259,7 @@
     background:
       place( top + left, dx: 15mm, dy: 25mm,
         table(columns: (18mm,107mm, 30mm, 30mm),
-          rows: (6mm, 245mm),
+          rows: (6mm, 248mm),
           align: (center, left, center, center, center, center, center, center, center),
           stroke: (x, y) => (
             left: if x == 0 { 1pt } else { 0.25pt },
