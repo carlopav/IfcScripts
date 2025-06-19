@@ -87,7 +87,7 @@
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
-      new-cell.push(table.cell(..root-cost-cell-style)[#format-decimal(float(row.at("TotalPrice")), places: 2)])
+      new-cell.push(table.cell(..root-cost-cell-style, align: bottom)[#format-decimal(float(row.at("TotalPrice")), places: 2)])
     } else {
         if row.at("Identification") != "" {
         new-cell.push(row.at("Hierarchy"))
