@@ -2,12 +2,12 @@
 // author: carlo pavan
 // year: 2025
 
-#let euro(num) = {
-  str(calc.round(float(num), digits: 2)) + " €"
-}
+// custom cell styles
+#let total-cell-style = (stroke: (top: 0.25pt + gray))
+#let root-cost-cell-style = (stroke: (bottom: (dash: "dotted"), top: (dash: "dotted")))
 
 
-
+// custom numbers styles
 #let unit_map = (
   "METRE": "m",
   "SQUARE_METRE": "m²",
@@ -18,6 +18,12 @@
   "KILOGRAM": "kg",
   // add more mappings as needed
 )
+
+
+
+#let euro(num) = {
+  str(calc.round(float(num), digits: 2)) + " €"
+}
 
 
 
@@ -71,19 +77,42 @@
   for row in data.rows {
     let new-cell = ()
 
-    if row.at("Identification") != "" {
-      new-cell.push(row.at("Hierarchy"))
-      new-cell.push(strong(row.at("Name")) + "\n" + text(font: "Liberation Mono", row.at("Identification")))
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
+    if row.at("TotalPrice") != "0.0"{
+      // Nuovo
+      new-cell.push(table.cell(..root-cost-cell-style)[#row.at("Hierarchy")])
+      new-cell.push(table.cell(..root-cost-cell-style)[#strong(row.at("Name")) #linebreak() #row.at("Description", default:lorem(10))])
+      new-cell.push(table.cell(..root-cost-cell-style)[])
+      new-cell.push(table.cell(..root-cost-cell-style)[])
+      new-cell.push(table.cell(..root-cost-cell-style)[])
+      new-cell.push(table.cell(..root-cost-cell-style)[])
+      new-cell.push(table.cell(..root-cost-cell-style)[])
+      new-cell.push(table.cell(..root-cost-cell-style)[])
+      new-cell.push(table.cell(..root-cost-cell-style)[#format-decimal(float(row.at("TotalPrice")), places: 2)])
     } else {
-      new-cell.push(row.at("Hierarchy"))
-      new-cell.push(strong(row.at("Name")))
+        if row.at("Identification") != "" {
+        new-cell.push(row.at("Hierarchy"))
+        new-cell.push(strong(row.at("Name")) + "\n" + text(font: "Liberation Mono", row.at("Identification")))
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+      } else {
+        new-cell.push(row.at("Hierarchy"))
+        new-cell.push(strong(row.at("Name")))
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+        new-cell.push([])
+      }
+    
+      new-cell.push([])
+      new-cell.push(par(justify: true, text(row.at("Description", default:lorem(25)))))
       new-cell.push([])
       new-cell.push([])
       new-cell.push([])
@@ -91,35 +120,27 @@
       new-cell.push([])
       new-cell.push([])
       new-cell.push([])
-    }
   
-    new-cell.push([])
-    new-cell.push(par(justify: true, text(row.at("Description", default:lorem(25)))))
-    new-cell.push([])
-    new-cell.push([])
-    new-cell.push([])
-    new-cell.push([])
-    new-cell.push([])
-    new-cell.push([])
-    new-cell.push([])
-
-    new-cell.push([])
-    new-cell.push(table.cell(align: right)[Sum #unit_map.at(row.at("Unit"), default: "")])
-    new-cell.push([])
-    new-cell.push([])
-    new-cell.push([])
-    new-cell.push([])
-    // Cost item total. Perhaps better format it in python right in the csv, so it's not necessary to perform those operations in typst
-    if row.at("Quantity") == "" {
-      new-cell.push("0.00")
-      new-cell.push(row.at("RateSubtotal"))
-      new-cell.push("0.00")
-    } 
-    else {
-      new-cell.push(format-decimal(float(row.at("Quantity")), places: 2))
-      new-cell.push(row.at("RateSubtotal"))
-      new-cell.push(format-decimal(float(row.at("Quantity")) * float(row.at("RateSubtotal")), places: 2))
+      new-cell.push([])
+      new-cell.push(table.cell(align: right)[Sum #unit_map.at(row.at("Unit"), default: "")])
+      new-cell.push([])
+      new-cell.push([])
+      new-cell.push([])
+      new-cell.push([])
+      // Cost item total. Perhaps better format it in python right in the csv, so it's not necessary to perform those operations in typst
+      if row.at("Quantity") == "" {
+        new-cell.push(table.cell(
+          stroke: (top: 0.25pt + gray))[0.00])
+        new-cell.push(table.cell(..total-cell-style)[#row.at("RateSubtotal")])
+        new-cell.push((table.cell(..total-cell-style)[0.00]))
+      } 
+      else {
+        new-cell.push(table.cell(..total-cell-style)[#format-decimal(float(row.at("Quantity")), places: 2)])
+        new-cell.push(table.cell(..total-cell-style)[#row.at("RateSubtotal")])
+        new-cell.push(table.cell(..total-cell-style)[#format-decimal(float(row.at("Quantity")) * float(row.at("RateSubtotal")), places: 2)])
+      }
     }
+    
     
     new_rows.push(new-cell)
   }
