@@ -90,7 +90,7 @@
       new-cell.push([])
       
       new-cell.push(table.cell(..root-cost-cell-style)[#row.at("Hierarchy")])
-      new-cell.push(table.cell(..root-cost-cell-style)[#strong(row.at("Name")) #linebreak() #row.at("Description", default:lorem(5))])
+      new-cell.push(table.cell(..root-cost-cell-style)[#strong(upper(row.at("Name"))) #linebreak() #row.at("Description", default:lorem(5))])
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
       new-cell.push(table.cell(..root-cost-cell-style)[])
@@ -173,9 +173,18 @@
     let new-cell = ()
     if row.at("TotalPrice") != "0.0" {
       new-cell.push(row.at("Hierarchy"))
-      new-cell.push(row.at("Name"))
-      new-cell.push(row.at("General Cost"))
-      new-cell.push(format-decimal(float(row.at("TotalPrice")), places: 2))
+      if row.at("Index") == "1" {
+        // ROOT COST
+        new-cell.push(strong[#row.at("Name")])
+    new-cell.push(row.at("General Cost"))
+    new-cell.push(strong[#format-decimal(float(row.at("TotalPrice")), places: 2)])
+      } else {
+        // SUB CATEGORY
+        new-cell.push(table.cell(inset: (left: int(row.at("Index"))*2.5mm))[#row.at("Name")])
+        new-cell.push(format-decimal(float(row.at("TotalPrice")), places: 2))
+        new-cell.push([])
+      }
+
     }
 
   new_rows.push(new-cell)
