@@ -151,8 +151,7 @@
         new-cell.push(table.cell(..total-cell-style)[#format-decimal(float(row.at("Quantity")) * float(row.at("RateSubtotal")), places: 2)])
       }
     }
-    
-    
+        
     new_rows.push(new-cell)
   }
   table(
@@ -175,12 +174,12 @@
       new-cell.push(row.at("Hierarchy"))
       if row.at("Index") == "1" {
         // ROOT COST
-        new-cell.push(strong[#row.at("Name")])
+        new-cell.push(strong[#upper(row.at("Name"))])
     new-cell.push(row.at("General Cost"))
     new-cell.push(strong[#format-decimal(float(row.at("TotalPrice")), places: 2)])
       } else {
         // SUB CATEGORY
-        new-cell.push(table.cell(inset: (left: int(row.at("Index"))*2.5mm))[#row.at("Name")])
+        new-cell.push(table.cell(inset: (left: int(row.at("Index"))*2.5mm))[#upper(row.at("Name"))])
         new-cell.push(format-decimal(float(row.at("TotalPrice")), places: 2))
         new-cell.push([])
       }
