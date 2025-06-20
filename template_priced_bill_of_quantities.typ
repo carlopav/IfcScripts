@@ -154,6 +154,7 @@
         
     new_rows.push(new-cell)
   }
+  
   table(
     columns: (18mm,1fr, 12mm,12mm,12mm,12mm, 20mm, 20mm, 25mm),
     align: (center, left, center, center, center, center, right, right, right),
@@ -208,6 +209,7 @@
 
 
 #let project(
+  schedule_path: "",
   title: "", 
   schedule_name: "", 
   cover_page: bool, 
@@ -258,7 +260,7 @@
 
   set text(font: "Liberation Sans", size: 8pt, lang: "en");
       
-  csv-table-schedule("schedule.csv")
+  csv-table-schedule(schedule_path)
     
   if summary == true {
     pagebreak()
@@ -284,7 +286,7 @@
     )
     set text(font: "Liberation Sans", size: 8pt, lang: "en");
     
-    csv-table-summary("schedule.csv")
+    csv-table-summary(schedule_path)
     
   }
 }
