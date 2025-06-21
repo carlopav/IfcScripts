@@ -2,12 +2,23 @@
 // author: carlo pavan
 // year: 2025
 
+
 // custom cell styles
 #let total-cell-style = (stroke: (top: 0.25pt + gray))
-#let root-cost-cell-style = (stroke: (bottom: (dash: "dotted")), fill: gray.transparentize(90%))
+#let root-cost-cell-style = (
+  stroke: (bottom: (dash: "dotted")), 
+  fill: gray.transparentize(90%),
+  align: bottom
+)
 
 
-// custom numbers styles
+
+#let euro(num) = {
+  str(calc.round(float(num), digits: 2)) + " €"
+}
+
+
+
 #let unit_map = (
   "METRE": "m",
   "SQUARE_METRE": "m²",
@@ -18,12 +29,6 @@
   "KILOGRAM": "kg",
   // add more mappings as needed
 )
-
-
-
-#let euro(num) = {
-  str(calc.round(float(num), digits: 2)) + " €"
-}
 
 
 
@@ -54,107 +59,99 @@
 
 
 
-#let read-csv(path, delimiter: ",") = {
-  let lines = read(path).split("\n").filter(l => l != "")
-  let header = lines.at(0).split(delimiter).map(f => f.trim())
-  let rows = lines.slice(1).map(line => {
-    let values = line.split(delimiter).map(f => f.trim())
-    let row-dict = (:)
-    for (i, col) in header.enumerate() {
-      row-dict.insert(col, values.at(i, default: ""))
+#let arrange_summary_row(row) = {
+  let name = strong(upper(row.at("Name")))
+  let description = [#par(justify: true, text(8pt, row.at("Description", default: lorem(35))))]
+  let total = if row.at("RateSubtotal") == "" {0.0} else {float(row.at("RateSubtotal"))}
+  if row.at("TotalPrice") != "0.0" {
+    if row.at("Index") == "1" {
+      // ROOT COST
+      (
+        row.at("Hierarchy"),
+        name,
+        [],
+        strong[#format-decimal(float(row.at("TotalPrice")), places: 2)]        
+      )
+    } else {
+      // SUB CATEGORY
+      ( 
+        row.at("Hierarchy"),
+        table.cell(inset: (left: int(row.at("Index"))*2.5mm))[#upper(row.at("Name"))],
+        format-decimal(float(row.at("TotalPrice")), places: 2),
+        [],
+      )
     }
-    row-dict
-  })
-  (header: header, rows: rows)
+  }
+}
+
+
+
+#let arrange_cost_item_row(row) = {
+  if row.at("TotalPrice") != "0.0" {
+    // CATEGORY
+    let name = strong(upper(row.at("Name")))
+    let description = [#par(justify: true, text(8pt, row.at("Description", default: lorem(35))))]
+    let total_price = format-decimal(float(row.at("TotalPrice", default: "0.0")), places: 2)
+  
+    (
+      [], [], [], [], [], [], [], [], [],
+    )
+    (
+      table.cell(..root-cost-cell-style)[#row.at("Hierarchy")],
+      table.cell(..root-cost-cell-style)[#strong(upper(row.at("Name"))) #linebreak() #row.at("Description", default:"")],
+      table.cell(..root-cost-cell-style)[],      
+      table.cell(..root-cost-cell-style)[],
+      table.cell(..root-cost-cell-style)[],
+      table.cell(..root-cost-cell-style)[],
+      table.cell(..root-cost-cell-style)[],
+      table.cell(..root-cost-cell-style)[],
+      table.cell(..root-cost-cell-style)[#strong(total_price)],
+    ) 
+    
+  } else {
+    // COST ITEM
+    let name = strong(upper(row.at("Name")))
+    let description = [#par(justify: true, text(8pt, row.at("Description", default: lorem(35))))]
+    let unit = table.cell(align: right)[Sum #unit_map.at(row.at("Unit"), default: "")]
+    let quant = if row.at("Quantity") == "" {0.0} else {
+      format-decimal(float(row.at("Quantity")))}
+    let rate = if row.at("RateSubtotal") == "" {0.0} else {
+      format-decimal(float(row.at("RateSubtotal")))}
+    let total = if row.at("Quantity") == "" {0.0} else {
+      format-decimal(float(row.at("Quantity")) * float(row.at("RateSubtotal")), places: 2)}
+    
+    (
+      row.at("Hierarchy"),
+      if row.at("Identification") == "" {name + linebreak() + description} else {name + linebreak() + row.at("Identification") +  linebreak() + description},
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+    )
+    (
+      [],
+      unit,
+      [],
+      [],
+      [],
+      [],
+      table.cell(..total-cell-style, align: right + bottom)[#quant],
+      table.cell(..total-cell-style, align: right + bottom)[#rate],
+      table.cell(..total-cell-style, align: right + bottom)[#total],
+    )
+    
+  }
 }
 
 
 
 #let csv-table-schedule(path, delimiter: ",") = {
-  let data = read-csv(path, delimiter: delimiter)
-  let new_rows = ()
-  
-  for row in data.rows {
-    let new-cell = ()
-
-    if row.at("TotalPrice") != "0.0"{
-      // NEW ROOT COST / CHAPTER
-      new-cell.push([#colbreak()]) // new root cost to new page: DOES NOT WORK
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])      
-      new-cell.push([])
-      new-cell.push([])
-      
-      new-cell.push(table.cell(..root-cost-cell-style)[#row.at("Hierarchy")])
-      new-cell.push(table.cell(..root-cost-cell-style)[#strong(upper(row.at("Name"))) #linebreak() #row.at("Description", default:lorem(5))])
-      new-cell.push(table.cell(..root-cost-cell-style)[])
-      new-cell.push(table.cell(..root-cost-cell-style)[])
-      new-cell.push(table.cell(..root-cost-cell-style)[])
-      new-cell.push(table.cell(..root-cost-cell-style)[])
-      new-cell.push(table.cell(..root-cost-cell-style)[])
-      new-cell.push(table.cell(..root-cost-cell-style)[])
-      new-cell.push(table.cell(..root-cost-cell-style)[#strong(format-decimal(float(row.at("TotalPrice")), places: 2))])
-    } else {
-        // NEW COST ITEM
-        if row.at("Identification") != "" {
-        new-cell.push(row.at("Hierarchy"))
-        new-cell.push(strong(row.at("Name")) + "\n" + text(font: "Liberation Mono", row.at("Identification")))
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-      } else {
-        new-cell.push(row.at("Hierarchy"))
-        new-cell.push(strong(row.at("Name")))
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-        new-cell.push([])
-      }
-    
-      new-cell.push([])
-      new-cell.push(par(justify: true, text(row.at("Description", default:lorem(25)))))
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-  
-      new-cell.push([])
-      new-cell.push(table.cell(align: right)[Sum #unit_map.at(row.at("Unit"), default: "")])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      new-cell.push([])
-      // Cost item total. Perhaps better format it in python right in the csv, so it's not necessary to perform those operations in typst
-      if row.at("Quantity") == "" {
-        new-cell.push(table.cell(
-          stroke: (top: 0.25pt + gray))[0.00])
-        new-cell.push(table.cell(..total-cell-style)[#row.at("RateSubtotal")])
-        new-cell.push((table.cell(..total-cell-style)[0.00]))
-      } 
-      else {
-        new-cell.push(table.cell(..total-cell-style)[#format-decimal(float(row.at("Quantity")), places: 2)])
-        new-cell.push(table.cell(..total-cell-style)[#row.at("RateSubtotal")])
-        new-cell.push(table.cell(..total-cell-style)[#format-decimal(float(row.at("Quantity")) * float(row.at("RateSubtotal")), places: 2)])
-      }
-    }
-        
-    new_rows.push(new-cell)
-  }
-  
+  let data = csv(path, delimiter: delimiter, row-type: dictionary)
+  let new_rows = data.map(arrange_cost_item_row)
+ 
   table(
     columns: (18mm,1fr, 12mm,12mm,12mm,12mm, 20mm, 20mm, 25mm),
     align: (center, left, center, center, center, center, right, right, right),
@@ -166,29 +163,12 @@
 
 
 #let csv-table-summary(path, delimiter: ",") = {
-  let data = read-csv(path, delimiter: delimiter)
-  let new_rows = ()
+  let data = csv(path, delimiter: delimiter, row-type: dictionary)
+  let new_rows = data.map(arrange_summary_row)
+  let general_total = data.filter(row => row.at("Index") == "1") 
+   .map(row => float(row.at("TotalPrice")))
+   .sum()
   
-  for row in data.rows {
-    let new-cell = ()
-    if row.at("TotalPrice") != "0.0" {
-      new-cell.push(row.at("Hierarchy"))
-      if row.at("Index") == "1" {
-        // ROOT COST
-        new-cell.push(strong[#upper(row.at("Name"))])
-    new-cell.push(row.at("General Cost"))
-    new-cell.push(strong[#format-decimal(float(row.at("TotalPrice")), places: 2)])
-      } else {
-        // SUB CATEGORY
-        new-cell.push(table.cell(inset: (left: int(row.at("Index"))*2.5mm))[#upper(row.at("Name"))])
-        new-cell.push(format-decimal(float(row.at("TotalPrice")), places: 2))
-        new-cell.push([])
-      }
-
-    }
-
-  new_rows.push(new-cell)
-  }
   set text(size: 10pt)
   pad(left: 2cm)[SUMMARY:]
   
@@ -204,6 +184,15 @@
     ),
     ..new_rows.flatten()
   )
+  
+  set text(size: 10pt)
+  grid(
+  columns: (18mm,107mm, 30mm, 30mm),
+  align: (center, right, center, right),
+  inset: 1mm,
+  fill: gray.transparentize(70%),
+  [], strong[GENERAL TOTAL:], [],[#strong(format-decimal(general_total, places: 2))]
+)
 }
 
 
@@ -284,9 +273,6 @@
         )
       )
     )
-    set text(font: "Liberation Sans", size: 8pt, lang: "en");
-    
     csv-table-summary(schedule_path)
-    
   }
 }
