@@ -1,10 +1,9 @@
-#import "template_priced_bill_of_quantities.typ": *
-
-// Take a look at the file `template.typ` in the file panel
-// to customize this template and discover how it works.
+#import "template_ifc_cost_schedule.typ": *
 #show: project.with(
+  schedule_path: "schedule.csv",
   title: "Casa ZP",
   schedule_name: "Computo di progetto",
+  schedule_type: "SCHEDULEOFRATES",
   cover_page: false,
   root_items_to_new_page: false,
   summary: true,
