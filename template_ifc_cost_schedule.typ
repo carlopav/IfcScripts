@@ -35,7 +35,7 @@
 
 
 #let schedule_of_rates_table = table(
-  columns: (18mm,140mm, 27mm),
+  columns: (30mm,130mm, 25mm),
     rows: (6mm, 248mm),
     align: (center, left, center),
     stroke: (x, y) => (
@@ -214,8 +214,8 @@
   let rate = if row.at("RateSubtotal") == "" {0.0} else {
       format-decimal(float(row.at("RateSubtotal")))}
   (
-    [],
-    if row.at("Identification") == "" {name + linebreak() + description} else {name + linebreak() + row.at("Identification") +  linebreak() + description},
+    row.at("Identification"),
+    if row.at("Identification") == "" {name + linebreak() + description} else {name + linebreak() + description},
     []
   )
   (
@@ -251,7 +251,7 @@
     let new_rows = data.map(arrange_schedule_of_rates_row)
    
     table(
-      columns: (18mm,1fr, 25mm),
+      columns: (30mm,130mm, 25mm),
       align: (center, left, right),
       stroke: none,
       ..new_rows.flatten()
