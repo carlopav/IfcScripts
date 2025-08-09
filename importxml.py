@@ -69,20 +69,10 @@ class ImportXMLRateList(Operator, ImportHelper):
 
     def execute(self, context):
         bpy.types.Scene.xml_rate_list_active_list_filepath = self.filepath
-        selected_rate = read_xml_rate_list(bpy.context.scene.xml_rate_list_active_list_filepath)[bpy.context.scene.xml_rate_list_active_index]
-        print(selected_rate.text)
-        file = tool.Ifc.get()
-        #active_cost_schedule=file.by_id(bpy.context.scene.BIMCostProperties.active_cost_schedule_id)
-        active_cost_schedule = file.by_type("IfcCostSchedule")[0]
-        cost_item=ifcopenshell.api.cost.add_cost_item(file, cost_schedule=active_cost_schedule)
-        cost_item.Description = selected_rate.text
-        cost_item.Name = textwrap..shorten(text=selected_rate.text, width=30, placeholder="")
-        cost_item.Identification = selected_rate.attrib["cod"]
-        cost_value = ifcopenshell.api.cost.add_cost_value(file, parent=cost_item)
-        ifcopenshell.api.cost.edit_cost_value(file, cost_value,
-        attributes={"AppliedValue": float(selected_rate.attrib["val"])})
-        #tool.Cost.load_cost_schedule_tree()v
-        return update_xml_rate_list(context, self.filepath, self.use_setting)
+        update_xml_rate_list(context, self.filepath, self.use_setting)
+        return {'FINISHED'}
+
+
 
 class ImportRateToActiveCostSchedule(bpy.types.Operator):
     """Tooltip"""
@@ -91,7 +81,26 @@ class ImportRateToActiveCostSchedule(bpy.types.Operator):
 
 
     def execute(self, context):
-        print("importando la rate")
+        selected_rate = read_xml_rate_list(bpy.context.scene.xml_rate_list_active_list_filepath)[bpy.context.scene.xml_rate_list_active_index]
+        print(selected_rate.text)
+        file = tool.Ifc.get()
+        #active_cost_schedule=file.by_id(bpy.context.scene.BIMCostProperties.active_cost_schedule_id)
+        active_cost_schedule = file.by_type("IfcCostSchedule")[0]
+        cost_item=ifcopenshell.api.cost.add_cost_item(file, cost_schedule=active_cost_schedule)
+        cost_item.Description = selected_rate.text
+        cost_item.Name = textwrap.shorten(text=selected_rate.text, width=30, placeholder="")
+        cost_item.Identification = selected_rate.attrib["cod"]
+        cost_value = ifcopenshell.api.cost.add_cost_value(file, parent=cost_item)
+        cost_value.ArithmeticOperator="ADD"
+        ifcopenshell.api.cost.edit_cost_value(file, cost_value,
+        attributes={"AppliedValue": float(selected_rate.attrib["val"])})
+        sub_cost_value_1 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
+        sub_cost_value_2 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
+        ifcopenshell.api.cost.edit_cost_value(file, sub_cost_value_1,
+        attributes={"AppliedValue": float(selected_rate.attrib["val"])*(1-float(selected_rate.attrib["man"])/100)})
+        ifcopenshell.api.cost.edit_cost_value(file, sub_cost_value_2,
+        attributes={"Category": "Labor", "AppliedValue": float(selected_rate.attrib["val"])*float(selected_rate.attrib["man"])/100})
+        #tool.Cost.load_cost_schedule_tree()v
 
         return {'FINISHED'}
 
