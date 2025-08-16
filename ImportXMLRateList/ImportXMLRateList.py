@@ -145,19 +145,22 @@ class ImportXMLRateList(Operator, ImportHelper):
         return {'FINISHED'}
 
 
-def create_cost_item(file, parent, selected_rate):
+def create_cost_item(file, selected_rate, create_new_item=True):
     import ifcopenshell
-    from bonsai import core, tool
+    import bonsai
     active_ui_cost_item = bpy.context.scene.BIMCostProperties.active_cost_item
     active_ifc_cost_item=file.by_id(active_ui_cost_item.ifc_definition_id)
-    # determine where the cost item should be created
-    if active_ifc_cost_item in ifcopenshell.util.cost.get_root_cost_items(file.by_id(bpy.context.scene.BIMCostProperties.active_cost_schedule_id)):
-        cost_item=ifcopenshell.api.cost.add_cost_item(file, cost_item=active_ifc_cost_item)
-    elif active_ui_cost_item.has_children:
-        cost_item=ifcopenshell.api.cost.add_cost_item(file, cost_item=active_ifc_cost_item)
+    
+    if create_new_item:
+        if active_ifc_cost_item in ifcopenshell.util.cost.get_root_cost_items(file.by_id(bpy.context.scene.BIMCostProperties.active_cost_schedule_id)):
+            cost_item=ifcopenshell.api.cost.add_cost_item(file, cost_item=active_ifc_cost_item)
+        elif active_ui_cost_item.has_children:
+            cost_item=ifcopenshell.api.cost.add_cost_item(file, cost_item=active_ifc_cost_item)
+        else:
+            cost_item=ifcopenshell.api.cost.add_cost_item(file, cost_item=active_ifc_cost_item.Nests[0].RelatingObject)
     else:
-        cost_item=ifcopenshell.api.cost.add_cost_item(file, cost_item=active_ifc_cost_item.Nests[0].RelatingObject)
-        
+        cost_item = active_ifc_cost_item
+    
     cost_item.Name = selected_rate[0].split(" - ")[1]
     cost_item.Description = selected_rate[1]
     attributes = selected_rate[3]
@@ -166,31 +169,27 @@ def create_cost_item(file, parent, selected_rate):
     cost_value.ArithmeticOperator="ADD"
     ifcopenshell.api.cost.edit_cost_value(file, cost_value,
     attributes={"AppliedValue": float(attributes["val"])})
-    sub_cost_value_1 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
-    sub_cost_value_2 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
-    ifcopenshell.api.cost.edit_cost_value(file, sub_cost_value_1,
-    attributes={"AppliedValue": float(attributes["val"])*(1-float(attributes["man"])/100)})
-    ifcopenshell.api.cost.edit_cost_value(file, sub_cost_value_2,
-    attributes={"Category": "Labor", "AppliedValue": float(attributes["val"])*float(attributes["man"])/100})
-    #bpy.context.scene.BIMCostProperties.cost_items.clear()
-    #tool.Cost.load_cost_item_attributes(cost_item)
-    tool.Cost.load_cost_schedule_tree()
     
-    #core.cost.add_cost_item(tool.Ifc, tool.Cost, cost_item=file.by_id(cost_item.id()))
+    if float(attributes["man"]) != 0.0:
+        sub_cost_value_1 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
+        sub_cost_value_2 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
+        ifcopenshell.api.cost.edit_cost_value(file, sub_cost_value_1,
+        attributes={"AppliedValue": float(attributes["val"])*(1-float(attributes["man"])/100)})
+        ifcopenshell.api.cost.edit_cost_value(file, sub_cost_value_2,
+        attributes={"Category": "Labor", "AppliedValue": float(attributes["val"])*float(attributes["man"])/100})
     
+    bonsai.bim.module.cost.data.refresh()
+    bonsai.tool.Cost.load_cost_schedule_tree()
 
 
-class ImportRateToActiveCostSchedule(bpy.types.Operator):
-    """Tooltip"""
+class UpdateActiveCostItem(bpy.types.Operator):
+    """Update active cost item with selected rate data."""
     bl_idname = "object.simple_operator"
-    bl_label = "Simple Object Operator"
+    bl_label = "Import Rate to Active Cost Schedule"
     
     @classmethod
     def poll(self, context):
         try:
-            from bonsai import tool
-            tool.Ifc.get()
-            import ifcopenshell
             bpy.context.scene.xml_rate_list_active_list_filepath
             bpy.context.scene.xml_rate_list
             bpy.context.scene.xml_rate_list_active_index
@@ -199,13 +198,38 @@ class ImportRateToActiveCostSchedule(bpy.types.Operator):
             return False
 
     def execute(self, context):
-        import ifcopenshell
         from bonsai import tool
         #TODO: load informations right from the list element without reading the file again
         selected_rate = read_xml_rate_list(bpy.context.scene.xml_rate_list_active_list_filepath)[bpy.context.scene.xml_rate_list_active_index]
         file = tool.Ifc.get()
         
-        create_cost_item(file, selected_rate=selected_rate)
+        create_cost_item(file, selected_rate=selected_rate, create_new_item=False)
+
+        return {'FINISHED'}
+
+
+class ImportRateToActiveCostSchedule(bpy.types.Operator):
+    """Add a new cost item to the active schedule with selected rate data."""
+    bl_idname = "object.simple_operator"
+    bl_label = "Import Rate to Active Cost Schedule"
+    
+    @classmethod
+    def poll(self, context):
+        try:
+            bpy.context.scene.xml_rate_list_active_list_filepath
+            bpy.context.scene.xml_rate_list
+            bpy.context.scene.xml_rate_list_active_index
+            return True
+        except:
+            return False
+
+    def execute(self, context):
+        from bonsai import tool
+        #TODO: load informations right from the list element without reading the file again
+        selected_rate = read_xml_rate_list(bpy.context.scene.xml_rate_list_active_list_filepath)[bpy.context.scene.xml_rate_list_active_index]
+        file = tool.Ifc.get()
+        
+        create_cost_item(file, selected_rate=selected_rate, create_new_item=True)
 
         return {'FINISHED'}
 
@@ -229,7 +253,10 @@ class RateListPanel(bpy.types.Panel):
 
     def rate_list_selection_callback(self, context):
         selected_rate = bpy.context.scene.xml_rate_list.items()[bpy.context.scene.xml_rate_list_active_index][1]
+        attrib=json.loads(selected_rate.attributes)
         new_label=""
+        new_label += attrib["cod"]
+        new_label += "\n"
         name = textwrap.wrap(selected_rate.name.split(" - ")[1], 100)
         for row in name:
             new_label += row + "\n"
@@ -238,7 +265,7 @@ class RateListPanel(bpy.types.Panel):
         for row in description:
             new_label += row + "\n"
         new_label += "                                                        -----\n"
-        attrib=json.loads(selected_rate.attributes)
+        
         for key in attrib:
             new_label += "\n" 
             new_label += key 
@@ -258,12 +285,19 @@ class RateListPanel(bpy.types.Panel):
             active_index_path="scene.xml_rate_list_active_index",
             unique_id="xml_rate_list_id",
         )
-        for row in self.get_active_item_info(context).split('\n'):
-            layout.label(text=row)
-        layout.operator(ImportRateToActiveCostSchedule.bl_idname, text="Import Rate to Active Cost Schedule")
+        row = layout.row()
+        row.label(text=self.get_active_item_info(context).split('\n')[0])
+        btn_row = row.row(align=True)
+        btn_row.alignment = 'RIGHT'
+        btn_row.operator(ImportRateToActiveCostSchedule.bl_idname, text="", icon='ADD')
+        btn_row.operator(ImportRateToActiveCostSchedule.bl_idname, text="", icon='FILE_REFRESH')
 
+        for row in self.get_active_item_info(context).split('\n')[1:]:
+            layout.label(text=row)
+        
 
 classes = [
+    UpdateActiveCostItem,
     ImportRateToActiveCostSchedule,
     ImportXMLRateList,
     RateListPropGroup,
