@@ -1,6 +1,5 @@
 import re
-import LeenoImport
-import xml.etree.ElementTree as ET
+import LeenoImport_utils
 
 
 # ~from com.sun.star.sheet.CellFlags import \
@@ -46,7 +45,7 @@ def parseXML(data, defaultTitle=None):
 
     # elimina i namespaces dai dati ed ottiene
     # elemento radice dell' albero XML
-    root = LeenoImport.stripXMLNamespaces(data)
+    root = LeenoImport_utils.stripXMLNamespaces(data)
 
     intestazione = root.find('intestazione')
     autore = intestazione.attrib['autore']

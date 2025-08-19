@@ -1,7 +1,5 @@
 import re
-import LeenoImport
-import xml.etree.ElementTree as ET
-import LeenoDialogs as DLG
+from LeenoImport_utils import stripXMLNamespaces
 
 # ~from com.sun.star.sheet.CellFlags import \
     # ~VALUE, DATETIME, STRING, ANNOTATION, FORMULA, HARDATTR, OBJECTS, EDITATTR, FORMATTED
@@ -46,7 +44,7 @@ def parseXML(data, defaultTitle=None):
 
     # elimina i namespaces dai dati ed ottiene
     # elemento radice dell' albero XML
-    root = LeenoImport.stripXMLNamespaces(data)
+    root = LeenoImport_utils.stripXMLNamespaces(data)
 
     # ~desc = root.items()[1][1]
     titolo = root.get('desc') #+ ' - ' + root.get('ver')

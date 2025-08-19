@@ -4,6 +4,7 @@ from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 
+import sys
 import os
 import textwrap
 import json
@@ -13,13 +14,19 @@ source = os.path.join( "c:\\120grammi Dropbox\\120grammi_risorse\\01-Prezzari", 
 
 #------------------------------------------------------ HELPER FUNCTIONS
 
-'''import LeenoImport_XmlSix
-import LeenoImport_XmlToscana
-import LeenoImport_XmlSardegna
-import LeenoImport_XmlLiguria
+
+script_dir = "C:\\Users\\carlo\\Documents\\IfcScripts\\ImportXMLRateList"
+
+if script_dir not in sys.path:
+    sys.path.append(script_dir)
+    
+#import LeenoImport_XmlSix
+#import LeenoImport_XmlToscana
+#import LeenoImport_XmlSardegna
+#import LeenoImport_XmlLiguria
 import LeenoImport_XmlVeneto
-import LeenoImport_XmlBasilicata
-import LeenoImport_XmlLombardia'''
+#import LeenoImport_XmlBasilicata
+#import LeenoImport_XmlLombardia
 
 
 def fixParagraphSize(txt):

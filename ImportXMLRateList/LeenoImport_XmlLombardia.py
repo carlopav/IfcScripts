@@ -1,8 +1,7 @@
 import re
-import LeenoImport
-import xml.etree.ElementTree as ET
-import LeenoDialogs as DLG
-import pyleeno as PL
+import LeenoImport_utils
+# import LeenoDialogs as DLG # should not depend upon this
+# import pyleeno as PL # should not depend upon this
 
 # ~from com.sun.star.sheet.CellFlags import \
     # ~VALUE, DATETIME, STRING, ANNOTATION, FORMULA, HARDATTR, OBJECTS, EDITATTR, FORMATTED
@@ -37,7 +36,7 @@ def parseXML(data, defaultTitle=None):
 
     # elimina i namespaces dai dati ed ottiene
     # elemento radice dell' albero XML
-    root = LeenoImport.stripXMLNamespaces(data)
+    root = LeenoImport_utils.stripXMLNamespaces(data)
 
     voci = root.find('voci/voci')
     rifvoce = voci.find('riferimenti_voce')
@@ -126,97 +125,6 @@ def parseXML(data, defaultTitle=None):
             mdo = float(dettaglio_voce.attrib['rapporto_RU_voce']) / 100
         except (KeyError, ValueError):
             pass
-
-        artList[codice] = {
-            'codice': codice,
-            'desc': desc,
-            'um': um,
-            'prezzo': prezzo,
-            'mdo': mdo,
-            'sicurezza': ''
-        }
-    
-    # ritorna un dizionario contenente tutto il necessario
-    # per costruire l'elenco prezzi
-    return {
-        'titolo': titolo,
-        'superCategorie': superCatList,
-        'categorie': catList,
-        'articoli': artList
-    }
-
-########################################################################
-
-def parseXML1(data, defaultTitle=None):
-    '''
-    estrae dal file XML i dati dell'elenco prezzi
-    I dati estratti avranno il formato seguente:
-
-        articolo = {
-            'codice': codice,
-            'desc': desc,
-            'um': um,
-            'prezzo': prezzo,
-            'mdo': mdo,
-            'sicurezza': oneriSic
-        }
-        artList = { codice : articolo, ... }
-
-        superCatList = { codice : descrizione, ... }
-        catList = { codice : descrizione, ... }
-
-        dati = {
-            'titolo': titolo,
-            'superCategorie': superCatList,
-            'categorie': catList,
-            'articoli' : artList
-        }
-    '''
-
-    # elimina i namespaces dai dati ed ottiene
-    # elemento radice dell' albero XML
-    root = LeenoImport.stripXMLNamespaces(data)
-    titolo = root.items()[0][-1].split('.')[0]
-
-    # ~ voci = root.find('Parte3')
-    voci = list(root.getchildren())
-            # ~ 'codice': codice,
-            # ~ 'desc': desc,
-            # ~ 'um': um,
-            # ~ 'prezzo': prezzo,
-            # ~ 'mdo': mdo,
-            # ~ 'sicurezza': ''
-    artList = {}
-    superCatList = {}
-    catList = {}
-    madre = ''
-    for voce in voci:
-        codice = voce.find('Codice').text
-        if ' - ' in codice:
-            codice = codice.split(' - ')[0]
-            # ~ DLG.chi(codice)
-            DLG.chi(voce.find('Codice').text[len(codice):])
-            desc = voce.find('Codice').text[len(codice):]
-            # ~ return
-        try:
-            desc = PL.clean_text(voce.find('Declaratoria').text)
-        except Exception as e:
-            # ~ DLG.chi(f'Errore: {e} code: {codice}')
-            desc = ''
-        try:
-            um = voce.find('UM').text
-            desc = madre + '\n' + desc
-        except:
-            um = ''
-            madre = desc
-        try:
-            prezzo = float(voce.find('Prezzo').text)
-        except:
-            prezzo = ''
-        try:
-            mdo = float(voce.find('Rapporto_RU').text)
-        except:
-            mdo = ''
 
         artList[codice] = {
             'codice': codice,

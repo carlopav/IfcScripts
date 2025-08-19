@@ -1,5 +1,5 @@
 import re
-import LeenoImport
+import LeenoImport_utils
 import xml.etree.ElementTree as ET
 # ~import LeenoDialogs as DLG
 
@@ -46,7 +46,7 @@ def parseXML(data, defaultTitle=None):
 
     # elimina i namespaces dai dati ed ottiene
     # elemento radice dell' albero XML
-    root = LeenoImport.stripXMLNamespaces(data)
+    root = LeenoImport_utils.stripXMLNamespaces(data)
 
     titolo = root.find('pdf').text
     if '.pdf' in titolo:

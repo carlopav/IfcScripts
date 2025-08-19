@@ -1,19 +1,7 @@
 import re
-import Dialogs
-import pyleeno as PL
 
-from io import StringIO
-import xml.etree.ElementTree as ET
+import LeenoImport_utils
 
-import codecs
-import shutil
-import LeenoImport
-import LeenoUtils
-import LeenoDialogs as DLG
-import SheetUtils
-
-from com.sun.star.sheet.CellFlags import \
-    VALUE, DATETIME, STRING, ANNOTATION, FORMULA, HARDATTR, OBJECTS, EDITATTR, FORMATTED
 
 def parseXML(data, defaultTitle=None):
     '''
@@ -78,11 +66,9 @@ def parseXML(data, defaultTitle=None):
     # elemento radice dell' albero XML
     
     try:
-        root = LeenoImport.stripXMLNamespaces(data)
+        root = LeenoImport_utils.stripXMLNamespaces(data)
     except Exception as e:
-        Dialogs.Exclamation(
-        Title="ERRORE xmlns:",
-        Text=f"""{e}
+        print("ERRORE xmlns:"+f"""{e}
 
 Il namespace dichiarato nel file fornito
 non è incluso nel set di importazione.

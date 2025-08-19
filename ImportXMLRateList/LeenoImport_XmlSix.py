@@ -2,9 +2,7 @@
     LeenO - modulo parser XML per il formato XML-SIX
 """
 import re
-import Dialogs
-import LeenoImport
-import LeenoDialogs as DLG
+
 
 def parseXML(data, defaultTitle):
     '''
@@ -36,7 +34,7 @@ def parseXML(data, defaultTitle):
 
     # elimina i namespaces dai dati ed ottiene
     # elemento radice dell' albero XML
-    root = LeenoImport.stripXMLNamespaces(data)
+    root = LeenoImport_utils.stripXMLNamespaces(data)
 
     prezzario = root.find('prezzario')
     descrizioni = prezzario.findall('przDescrizione')
@@ -63,13 +61,14 @@ def parseXML(data, defaultTitle):
         pass
 
     if len(lingue) > 1:
-        lingue['Tutte'] = 'tutte'
+        # Sistemare, ha delle parti specifiche di libreoffice che vanno eliminare, Multilingua da supportare
+        '''lingue['Tutte'] = 'tutte'
         lingue['Annulla'] = 'annulla'
         lingua = Dialogs.MultiButton(
             Icon="Icons-Big/question.png",
             Title="Scelta lingue",
             Text="Il file fornito è un prezzario multilinguale\n\nSelezionare la lingua da importare\noppure 'Tutte' per ottenere un prezzario multilinguale",
-            Buttons=lingue)
+            Buttons=lingue)'''
         # se si chiude la finestra il dialogo ritorna 'None'
         # lo consideriamo come un 'Annulla'
         if lingua is None:
@@ -279,7 +278,7 @@ def parseXML(data, defaultTitle):
 
         # giochino per garantire che la prima stringa abbia una lunghezza minima
         # in modo che LO formatti correttamente la cella
-        # ~desc = LeenoImport.fixParagraphSize(desc)
+        # ~desc = LeenoImport_utils.fixParagraphSize(desc)
         
         #sistema_cose
         desc.replace('\t', ' ').replace('Ã¨', 'è').replace('','').replace(
