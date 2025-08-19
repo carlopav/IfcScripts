@@ -1,3 +1,5 @@
+from typing import Union, List, TypedDict
+
 import bpy
 from bl_ui.generic_ui_list import draw_ui_list
 from bpy_extras.io_utils import ImportHelper
@@ -10,38 +12,138 @@ import textwrap
 import json
 
 
-def parse_xml_file(filename):
-    import xml.etree.ElementTree as ET
-    tree = ET.parse(filename)
-    root = tree.getroot()
-    return tree, root
 
 
-def read_xml_rate_list(filepath):
-    tree, root = parse_xml_file(filepath)
-    xml_tree_list = []
-    settori = root.findall("settore")
-    for settore in settori:
-        xml_tree_list.append((settore.attrib["cod"]+" - "+settore.attrib["desc"],"",0,settore.attrib))
-        for capitolo in settore:
-            xml_tree_list.append((capitolo.attrib["cod"]+" - "+capitolo.attrib["desc"],"",1,capitolo.attrib))
-            for paragrafo in capitolo:
-                xml_tree_list.append((paragrafo.attrib["cod"]+" - "+paragrafo[0].text,paragrafo[1].text, 2, paragrafo.attrib))
-                prezzi=paragrafo.findall(".//prezzo")
-                for prezzo in prezzi:
-                    xml_tree_list.append((prezzo.attrib["cod"]+" - "+prezzo.text,"", 3, prezzo.attrib))
-                    
-    return xml_tree_list
 
 
-def update_xml_rate_list(context, filepath, use_some_setting):
-    rate_list = read_xml_rate_list(filepath)
+
+class XmlRateItem(TypedDict):
+        index: int
+        level: int
+        is_parent: bool
+        parents: str
+        id: str
+        name: str
+        desc: str
+        unit: str
+        value: float
+        labor: float
+        security: float
+
+
+class XMLParser:
+    title: str
+    desc: str
+    year: str
+    xml_rate_list: List[XmlRateItem]
+
+    def __init__(self):
+        self.xml_rate_list = []
+    
+    def parse_header(self, root):
+        # module to be implemented by each importer classes
+        pass
+
+    def parse_items(self, root):
+        # module to be implemented by each importer classes
+        pass
+
+    def get_root(self, filename):
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(filename)
+        return tree.getroot()
+    
+    def clean_text(self, text:str):
+        import re
+        return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+
+
+class ParserXmlVeneto(XMLParser):
+    def parse(self, root):
+        index = 0
+        settori = root.findall("settore")
+        for settore in settori:
+            self.xml_rate_list.append({ "index": index,
+                                        "level": 0,
+                                        "is_parent": True,
+                                        "parents": "",
+                                        "id": settore.attrib["cod"],
+                                        "name": settore.attrib["desc"],
+                                        "desc": "",
+                                        "unit": "",
+                                        "value": 0.0,
+                                        "labor": 0.0,
+                                        "security": 0.0
+                                        })
+            n_settore = index
+            index += 1
+            for capitolo in settore:
+                self.xml_rate_list.append({ "index": index,
+                                            "level": 1,
+                                            "is_parent": True,
+                                            "parents": str(n_settore),
+                                            "id": capitolo.attrib["cod"],
+                                            "name": capitolo.attrib["desc"],
+                                            "desc": "",
+                                            "unit": "",
+                                            "value": 0.0,
+                                            "labor": 0.0,
+                                            "security": 0.0
+                                            })
+                n_capitolo = index
+                index += 1
+                for paragrafo in capitolo:
+                    self.xml_rate_list.append({ "index": index,
+                                                "level": 2,
+                                                "is_parent": True,
+                                                "parents": str(n_settore)+","+str(n_capitolo),
+                                                "id": paragrafo.attrib["cod"],
+                                                "name": paragrafo[0].text,
+                                                "desc": paragrafo[1].text,
+                                                "unit": "",
+                                                "value": 0.0,
+                                                "labor": 0.0,
+                                                "security": 0.0
+                                                })
+                    prezzi=paragrafo.findall(".//prezzo")
+                    n_paragrafo = index
+                    index += 1
+                    for prezzo in prezzi:
+                        self.xml_rate_list.append({ "index": index,
+                                                    "level": 3,
+                                                    "is_parent": False,
+                                                    "parents": str(n_settore)+","+str(n_capitolo)+","+str(n_paragrafo),
+                                                    "id": prezzo.attrib["cod"],
+                                                    "name": prezzo.text,
+                                                    "desc": paragrafo[1].text,
+                                                    "unit": prezzo.attrib["umi"],
+                                                    "value": float(prezzo.attrib["val"]),
+                                                    "labor": float(prezzo.attrib["man"])*float(prezzo.attrib["val"])/100 or 0.0,
+                                                    "security": 0.0,
+                                                    })
+                        index += 1
+                        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def update_xml_rate_list(context, rate_list, use_some_setting):
     context.scene.xml_rate_list.clear()
-    for i in rate_list:
+    for rate in rate_list:
         item = context.scene.xml_rate_list.add()
-        item.name = "      "*i[2]+i[0]
-        item.description = i[1]
-        item.attributes = json.dumps(i[3])
+        item.name = "      "*rate["level"]+rate["name"]
+        item.attributes = json.dumps(rate)
     return {'FINISHED'}
 
 
@@ -62,8 +164,10 @@ class ImportXMLRateList(Operator, ImportHelper):
     )
 
     def execute(self, context):
-        bpy.types.Scene.xml_rate_list_active_list_filepath = self.filepath
-        update_xml_rate_list(context, self.filepath, self.use_setting)
+        parser = ParserXmlVeneto()
+        root = parser.get_root(self.filepath)
+        parser.parse(root)
+        update_xml_rate_list(context, parser.xml_rate_list, self.use_setting)
         return {'FINISHED'}
 
 
@@ -83,22 +187,23 @@ def create_cost_item(file, selected_rate, create_new_item=True):
     else:
         cost_item = active_ifc_cost_item
     
-    cost_item.Name = selected_rate[0].split(" - ")[1]
-    cost_item.Description = selected_rate[1]
-    attributes = selected_rate[3]
-    cost_item.Identification = attributes["cod"]
+    rate_attrib = json.loads(selected_rate.attributes)
+    cost_item.Identification = rate_attrib["id"]
+    cost_item.Name = rate_attrib["name"]
+    cost_item.Description = rate_attrib["desc"]
     cost_value = ifcopenshell.api.cost.add_cost_value(file, parent=cost_item)
-    cost_value.ArithmeticOperator="ADD"
-    ifcopenshell.api.cost.edit_cost_value(file, cost_value,
-    attributes={"AppliedValue": float(attributes["val"])})
     
-    if float(attributes["man"]) != 0.0:
+    ifcopenshell.api.cost.edit_cost_value(file, cost_value,
+    attributes={"AppliedValue": rate_attrib["value"]})
+    
+    if float(rate_attrib["labor"]) != 0.0:
+        cost_value.ArithmeticOperator="ADD"
         sub_cost_value_1 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
         sub_cost_value_2 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
         ifcopenshell.api.cost.edit_cost_value(file, sub_cost_value_1,
-        attributes={"AppliedValue": float(attributes["val"])*(1-float(attributes["man"])/100)})
+        attributes={"AppliedValue": rate_attrib["value"]-rate_attrib["labor"]})
         ifcopenshell.api.cost.edit_cost_value(file, sub_cost_value_2,
-        attributes={"Category": "Labor", "AppliedValue": float(attributes["val"])*float(attributes["man"])/100})
+        attributes={"Category": "Labor", "AppliedValue": rate_attrib["labor"]})
     
     bonsai.bim.module.cost.data.refresh()
     bonsai.tool.Cost.load_cost_schedule_tree()
@@ -112,21 +217,18 @@ class UpdateActiveCostItem(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         try:
-            bpy.context.scene.xml_rate_list_active_list_filepath
             bpy.context.scene.xml_rate_list
             bpy.context.scene.xml_rate_list_active_index
+            bonsai.tool.Ifc.get()
             return True
         except:
             return False
 
     def execute(self, context):
         from bonsai import tool
-        #TODO: load informations right from the list element without reading the file again
-        selected_rate = read_xml_rate_list(bpy.context.scene.xml_rate_list_active_list_filepath)[bpy.context.scene.xml_rate_list_active_index]
+        xml_rate_list_selected_item = bpy.context.scene.xml_rate_list[bpy.context.scene.xml_rate_list_active_index]
         file = tool.Ifc.get()
-        
-        create_cost_item(file, selected_rate=selected_rate, create_new_item=False)
-
+        create_cost_item(file, selected_rate=xml_rate_list_selected_item, create_new_item=False)
         return {'FINISHED'}
 
 
@@ -138,27 +240,24 @@ class ImportRateToActiveCostSchedule(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         try:
-            bpy.context.scene.xml_rate_list_active_list_filepath
             bpy.context.scene.xml_rate_list
             bpy.context.scene.xml_rate_list_active_index
+            bpy.context.scene.BIMCostProperties.active_cost_item
+    
             return True
         except:
             return False
 
     def execute(self, context):
         from bonsai import tool
-        #TODO: load informations right from the list element without reading the file again
-        selected_rate = read_xml_rate_list(bpy.context.scene.xml_rate_list_active_list_filepath)[bpy.context.scene.xml_rate_list_active_index]
+        selected_rate = bpy.context.scene.xml_rate_list[bpy.context.scene.xml_rate_list_active_index]
         file = tool.Ifc.get()
-        
         create_cost_item(file, selected_rate=selected_rate, create_new_item=True)
-
         return {'FINISHED'}
 
 
 class RateListPropGroup(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty()
-    description: bpy.props.StringProperty()
     attributes:  bpy.props.StringProperty()
 
             
@@ -177,13 +276,13 @@ class RateListPanel(bpy.types.Panel):
         selected_rate = bpy.context.scene.xml_rate_list.items()[bpy.context.scene.xml_rate_list_active_index][1]
         attrib=json.loads(selected_rate.attributes)
         new_label=""
-        new_label += attrib["cod"]
+        new_label += attrib["id"]
         new_label += "\n"
-        name = textwrap.wrap(selected_rate.name.split(" - ")[1], 100)
+        name = textwrap.wrap(attrib["name"], 100)
         for row in name:
             new_label += row + "\n"
         new_label += "                                                        -----\n"
-        description = textwrap.wrap(selected_rate.description, 100)
+        description = textwrap.wrap(attrib["desc"], 100)
         for row in description:
             new_label += row + "\n"
         new_label += "                                                        -----\n"
@@ -192,7 +291,7 @@ class RateListPanel(bpy.types.Panel):
             new_label += "\n" 
             new_label += key 
             new_label += ": "
-            new_label += attrib[key]
+            new_label += str(attrib[key])
         RateListPanel.active_item_info = new_label
 
     def draw(self, context):
@@ -233,14 +332,12 @@ def register():
     class_register()
     bpy.types.Scene.xml_rate_list = bpy.props.CollectionProperty(type=RateListPropGroup)
     bpy.types.Scene.xml_rate_list_active_index = bpy.props.IntProperty(update=RateListPanel.rate_list_selection_callback)
-    bpy.types.Scene.xml_rate_list_active_list_filepath = bpy.props.StringProperty()
-
+    
 
 def unregister():
     class_unregister()
     del bpy.types.Scene.xml_rate_list
     del bpy.types.Scene.xml_rate_list_active_index
-    del bpy.types.Scene.xml_rate_list_active_list_filepath
 
 
 register()
