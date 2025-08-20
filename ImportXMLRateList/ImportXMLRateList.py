@@ -12,11 +12,6 @@ import textwrap
 import json
 
 
-
-
-
-
-
 class XmlRateItem(TypedDict):
         index: int
         level: int
@@ -124,33 +119,46 @@ class ParserXmlVeneto(XMLParser):
                         index += 1
                         
 
+class ParserXmlBasilicata(XMLParser):
+    def parse(self, root):
+        #TODO: implement custom parser
+        return None
 
 
+class ParserXmlToscana(XMLParser):
+    def parse(self, root):
+        #TODO: implement custom parser
+        return None
 
 
+class ParserXmlLiguria(XMLParser):
+    def parse(self, root):
+        #TODO: implement custom parser
+        return None
 
 
+class ParserXmlLombardia(XMLParser):
+    def parse(self, root):
+        #TODO: implement custom parser
+        return None
 
 
+class ParserXmlSardegna(XMLParser):
+    def parse(self, root):
+        #TODO: implement custom parser
+        return None
 
 
-
-
-
-
-def update_xml_rate_list(context, rate_list, use_some_setting):
-    context.scene.xml_rate_list.clear()
-    for rate in rate_list:
-        item = context.scene.xml_rate_list.add()
-        item.name = "      "*rate["level"]+rate["name"]
-        item.attributes = json.dumps(rate)
-    return {'FINISHED'}
+class ParserXmlSix(XMLParser):
+    def parse(self, root):
+        #TODO: implement custom parser
+        return None
 
 
 class ImportXMLRateList(Operator, ImportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
     bl_idname = "import.xml_rate_list_import"  # important since its how bpy.ops.import_test.some_data is constructed
-    bl_label = "Import Some Data"
+    bl_label = "Import XML Rate List"
     filename_ext = ".xml"
     filter_glob: StringProperty(
         default="*.xml",
@@ -167,7 +175,13 @@ class ImportXMLRateList(Operator, ImportHelper):
         parser = ParserXmlVeneto()
         root = parser.get_root(self.filepath)
         parser.parse(root)
-        update_xml_rate_list(context, parser.xml_rate_list, self.use_setting)
+        
+        context.scene.xml_rate_list.clear()
+        for rate in parser.xml_rate_list:
+            item = context.scene.xml_rate_list.add()
+            item.name = "      "*rate["level"]+rate["name"]
+            item.attributes = json.dumps(rate)
+            
         return {'FINISHED'}
 
 
@@ -211,16 +225,16 @@ def create_cost_item(file, selected_rate, create_new_item=True):
 
 class UpdateActiveCostItem(bpy.types.Operator):
     """Update active cost item with selected rate data."""
-    bl_idname = "object.simple_operator"
-    bl_label = "Import Rate to Active Cost Schedule"
+    bl_idname = "import.xml_rate_update_cost_item"
+    bl_label = "Update active cost item"
     
     @classmethod
     def poll(self, context):
         try:
-            bpy.context.scene.xml_rate_list
-            bpy.context.scene.xml_rate_list_active_index
-            bonsai.tool.Ifc.get()
-            return True
+            if len(getattr(bpy.context.scene, "xml_rate_list", [])) > 0 and bpy.context.scene.BIMCostProperties.active_cost_item != None: 
+                return True
+            else:
+                return False
         except:
             return False
 
@@ -234,17 +248,16 @@ class UpdateActiveCostItem(bpy.types.Operator):
 
 class ImportRateToActiveCostSchedule(bpy.types.Operator):
     """Add a new cost item to the active schedule with selected rate data."""
-    bl_idname = "object.simple_operator"
+    bl_idname = "import.xml_rate_add_cost_item"
     bl_label = "Import Rate to Active Cost Schedule"
     
     @classmethod
     def poll(self, context):
         try:
-            bpy.context.scene.xml_rate_list
-            bpy.context.scene.xml_rate_list_active_index
-            bpy.context.scene.BIMCostProperties.active_cost_item
-    
-            return True
+            if len(getattr(bpy.context.scene, "xml_rate_list", [])) > 0 and bpy.context.scene.BIMCostProperties.active_cost_item != None: 
+                return True
+            else:
+                return False
         except:
             return False
 
@@ -311,7 +324,7 @@ class RateListPanel(bpy.types.Panel):
         btn_row = row.row(align=True)
         btn_row.alignment = 'RIGHT'
         btn_row.operator(ImportRateToActiveCostSchedule.bl_idname, text="", icon='ADD')
-        btn_row.operator(ImportRateToActiveCostSchedule.bl_idname, text="", icon='FILE_REFRESH')
+        btn_row.operator(UpdateActiveCostItem.bl_idname, text="", icon='FILE_REFRESH')
 
         for row in self.get_active_item_info(context).split('\n')[1:]:
             layout.label(text=row)
