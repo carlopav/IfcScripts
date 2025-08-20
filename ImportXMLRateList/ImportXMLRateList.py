@@ -1,13 +1,9 @@
 from typing import Union, List, TypedDict
 
 import bpy
-from bl_ui.generic_ui_list import draw_ui_list
 from bpy_extras.io_utils import ImportHelper
-from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 
-import sys
-import os
 import textwrap
 import json
 
@@ -160,16 +156,17 @@ class ImportXMLRateList(Operator, ImportHelper):
     bl_idname = "import.xml_rate_list_import"  # important since its how bpy.ops.import_test.some_data is constructed
     bl_label = "Import XML Rate List"
     filename_ext = ".xml"
-    filter_glob: StringProperty(
+    filter_glob: bpy.props.StringProperty(
         default="*.xml",
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
-    use_setting: BoolProperty(
+    use_setting: bpy.props.BoolProperty(
         name="Example Boolean",
         description="Example Tooltip",
         default=True,
     )
+
 
     def execute(self, context):
         parser = ParserXmlVeneto()
@@ -179,17 +176,22 @@ class ImportXMLRateList(Operator, ImportHelper):
         context.scene.xml_rate_list.clear()
         for rate in parser.xml_rate_list:
             item = context.scene.xml_rate_list.add()
-            item.name = "      "*rate["level"]+rate["name"]
+            item.name = rate["id"]+" - "+rate["name"]
+            item.level = rate["level"]
+            item.is_parent = rate["is_parent"]
+            item.parents = rate["parents"]
             item.attributes = json.dumps(rate)
             
         return {'FINISHED'}
-
+    
 
 def create_cost_item(file, selected_rate, create_new_item=True):
     import ifcopenshell
     import bonsai
     active_ui_cost_item = bpy.context.scene.BIMCostProperties.active_cost_item
     active_ifc_cost_item=file.by_id(active_ui_cost_item.ifc_definition_id)
+    
+    #TODO: Remove previous cost values or edit them while updating
     
     if create_new_item:
         if active_ifc_cost_item in ifcopenshell.util.cost.get_root_cost_items(file.by_id(bpy.context.scene.BIMCostProperties.active_cost_schedule_id)):
@@ -230,15 +232,9 @@ class UpdateActiveCostItem(bpy.types.Operator):
     
     @classmethod
     def poll(self, context):
-        try:
-            if len(getattr(bpy.context.scene, "xml_rate_list", [])) > 0 and bpy.context.scene.BIMCostProperties.active_cost_item != None: 
-                return True
-            else:
-                return False
-        except:
-            return False
+       return False
 
-    def execute(self, context):
+    def execute(self, context): #TODO: Remove previous cost values or edit them while updating
         from bonsai import tool
         xml_rate_list_selected_item = bpy.context.scene.xml_rate_list[bpy.context.scene.xml_rate_list_active_index]
         file = tool.Ifc.get()
@@ -269,9 +265,134 @@ class ImportRateToActiveCostSchedule(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class XmlRateCustomUIList(bpy.types.UIList):
+    def draw_filter(self, context, layout):
+        # Only show search box, no other filter options
+        layout.prop(self, "filter_name", text="", icon='VIEWZOOM')
+        
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        # Add indentation based on level
+        rate_attrib=json.loads(item.attributes)
+        layout.alignment = 'LEFT'
+        if rate_attrib["is_parent"]:
+            # Parent with expand/collapse
+            icon_expand = 'DOWNARROW_HLT' if item.is_expanded else 'RIGHTARROW'
+            row=layout.row()
+            row.alignment = "RIGHT"
+            if item.level != 0:
+                row.label(text="  "*item.level)
+            op = row.operator("custom.toggle", text="", icon=icon_expand, emboss=False)
+            row.label(text=item.name)
+            op.index = index
+        else:
+            # Child item
+            layout.label(text="                       "+item.name)
+            
+    
+    def filter_items(self, context, data, propname):
+        items = getattr(data, propname)
+        flt_flags = []
+        flt_neworder = []
+        
+        # Get search filter from UIList
+        if self.filter_name:
+            # Use Blender's built-in search functionality
+            flt_flags = bpy.types.UI_UL_list.filter_items_by_name(
+                self.filter_name, self.bitflag_filter_item, items, "name",
+                reverse=self.use_filter_sort_reverse
+            )
+            # make sure hierarchy is shown during item search
+            search_filtered_flags = flt_flags[:]
+            for i, item in enumerate(items):
+                if flt_flags[i] & self.bitflag_filter_item:
+                    current_parents_idx = item.parents.split(",")
+                    for parent_idx in current_parents_idx:
+                        search_filtered_flags[int(parent_idx)] = self.bitflag_filter_item
+            flt_flags = search_filtered_flags
+            
+        else:
+            hide_next = False
+            hide_level = 10
+            for item in items:
+                show_item = True
+                if hide_next:
+                    if item.level <= hide_level:
+                        show_item = True
+                        if item.is_expanded:
+                            hide_next = False
+                        else:
+                            hide_next = True
+                            hide_level = item.level
+                    else:
+                        show_item = False
+                else:
+                    show_item = True
+                    if item.is_expanded:
+                        hide_next = False
+                    else:
+                        hide_next = True
+                        hide_level = item.level
+                    
+                flt_flags.append(self.bitflag_filter_item if show_item else 0)
+        
+        return flt_flags, flt_neworder
+    
+
+class CUSTOM_OT_toggle(Operator):
+    bl_idname = "custom.toggle"
+    bl_label = "Toggle"
+    
+    index: bpy.props.IntProperty()
+    
+    def execute(self, context):
+        item = context.scene.xml_rate_list[self.index]
+        item.is_expanded = not item.is_expanded
+        return {'FINISHED'}
+
+
+class CUSTOM_OT_collapse_to_level_0(Operator):
+    bl_idname = "custom.collapse_to_level_0"
+    bl_label = "Collapse to Level 0"
+    
+    def execute(self, context):
+        items = context.scene.xml_rate_list
+        for item in items:
+            if item.is_parent:
+                item.is_expanded = item.level < 0
+        return {'FINISHED'}
+
+
+class CUSTOM_OT_collapse_to_level_1(Operator):
+    bl_idname = "custom.collapse_to_level_1"
+    bl_label = "Collapse to Level 1"
+    
+    def execute(self, context):
+        items = context.scene.xml_rate_list
+        for item in items:
+            if item.is_parent:
+                item.is_expanded = item.level < 1
+        return {'FINISHED'}
+    
+
+class CUSTOM_OT_expand_all(Operator):
+    bl_idname = "custom.expand_all"
+    bl_label = "Expand All"
+    
+    def execute(self, context):
+        items = context.scene.xml_rate_list
+        for item in items:
+            if item.is_parent:
+                item.is_expanded = True
+        return {'FINISHED'}
+    
+
 class RateListPropGroup(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty()
+    level: bpy.props.IntProperty()
+    is_parent: bpy.props.BoolProperty()
+    parents: bpy.props.StringProperty()
     attributes:  bpy.props.StringProperty()
+    is_expanded: bpy.props.BoolProperty(default=True)
 
             
 class RateListPanel(bpy.types.Panel):
@@ -282,8 +403,10 @@ class RateListPanel(bpy.types.Panel):
     bl_category = "XML Rate List"
     active_item_info = "no item selected"
     
+    
     def get_active_item_info(self, context):
         return RateListPanel.active_item_info
+
 
     def rate_list_selection_callback(self, context):
         selected_rate = bpy.context.scene.xml_rate_list.items()[bpy.context.scene.xml_rate_list_active_index][1]
@@ -307,18 +430,18 @@ class RateListPanel(bpy.types.Panel):
             new_label += str(attrib[key])
         RateListPanel.active_item_info = new_label
 
+
     def draw(self, context):
         layout = self.layout
         row = layout.row()
         row.operator(ImportXMLRateList.bl_idname, text="Import Rate List")
         layout.label(text="XML Rate List: {}".format("Not yet implemented"))
-        draw_ui_list(
-            layout,
-            context,
-            list_path="scene.xml_rate_list",
-            active_index_path="scene.xml_rate_list_active_index",
-            unique_id="xml_rate_list_id",
-        )
+        row = layout.row()
+        row.operator(CUSTOM_OT_collapse_to_level_0.bl_idname, text="Collapse")
+        row.operator(CUSTOM_OT_collapse_to_level_1.bl_idname, text="To Level 1")        
+        row.operator(CUSTOM_OT_expand_all.bl_idname, text="Expand All")
+        layout.template_list("XmlRateCustomUIList", "", context.scene, "xml_rate_list",
+                           context.scene, "xml_rate_list_active_index", rows=8)  # More rows for large lists
         row = layout.row()
         row.label(text=self.get_active_item_info(context).split('\n')[0])
         btn_row = row.row(align=True)
@@ -331,12 +454,18 @@ class RateListPanel(bpy.types.Panel):
         
 
 classes = [
+    XmlRateCustomUIList,
+    CUSTOM_OT_toggle,
+    CUSTOM_OT_collapse_to_level_0,
+    CUSTOM_OT_collapse_to_level_1,    
+    CUSTOM_OT_expand_all,
     UpdateActiveCostItem,
     ImportRateToActiveCostSchedule,
     ImportXMLRateList,
     RateListPropGroup,
     RateListPanel,
 ]
+
 
 class_register, class_unregister = bpy.utils.register_classes_factory(classes)
 
