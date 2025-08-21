@@ -30,29 +30,44 @@ class XMLParser:
 
     def __init__(self):
         self.xml_rate_list = []
+        
+    @staticmethod
+    def get_xml_content(filename):
+        with open(filename, 'r', errors='ignore', encoding="utf8") as file:
+            data = file.read()
+        return data
 
     def parse_header(self, root):
         # module to be implemented by each importer classes
         pass
 
-    def parse_items(self, root):
+    def parse_items(self, xml_content):
         # module to be implemented by each importer classes
         pass
 
-    def get_root(self, filename):
-        import xml.etree.ElementTree as ET
-
-        tree = ET.parse(filename)
-        return tree.getroot()
-
-    def clean_text(self, text: str):
+    def clean_xml_content(self, data):
         import re
-
-        return re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text)
+        # clean non printable characters
+        return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', data)
+    
+    def get_stripped_xml_namespaces_root(self, data):
+        import xml.etree.ElementTree as ET
+        from io import StringIO
+        it = ET.iterparse(StringIO(data))
+        for _, el in it:
+            _, _, el.tag = el.tag.rpartition('}')
+        return it.root
+    
+    def get_root(self, data):
+        import xml.etree.ElementTree as ET
+        from io import StringIO
+        tree = ET.parse(StringIO(data))
+        return tree.root
 
 
 class ParserXmlVeneto(XMLParser):
-    def parse(self, root):
+    def parse_items(self, xml_content):
+        root = self.get_stripped_xml_namespaces_root(xml_content)
         index = 0
         settori = root.findall("settore")
         for settore in settori:
@@ -137,37 +152,43 @@ class ParserXmlVeneto(XMLParser):
 
 
 class ParserXmlBasilicata(XMLParser):
-    def parse(self, root):
+    def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
 class ParserXmlToscana(XMLParser):
-    def parse(self, root):
+    def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
 class ParserXmlLiguria(XMLParser):
-    def parse(self, root):
+    def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
 class ParserXmlLombardia(XMLParser):
-    def parse(self, root):
+    def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
 class ParserXmlSardegna(XMLParser):
-    def parse(self, root):
+    def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
+class ParserXmlFVG(XMLParser):
+    def parse_items(self, xml_content):
+        # TODO: implement custom parser
+        return None
+    
+
 class ParserXmlSix(XMLParser):
-    def parse(self, root):
+    def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
@@ -183,16 +204,64 @@ class ImportXMLRateList(Operator, ImportHelper):
         options={"HIDDEN"},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
-    use_setting: bpy.props.BoolProperty(
-        name="Example Boolean",
-        description="Example Tooltip",
-        default=True,
+    chosen_parser: bpy.props.EnumProperty(
+        name="Parser",
+        description="Choose the available parser",
+        items=[
+            ('Auto', "Auto", "Try to guess which importer is more suitable for the given data"),
+            ('RegioneVeneto', "Regione Veneto", "Tooltip"),
+            ('RegioneFriuliVeneziaGiulia', "Regione Friuli Venezia Giulia", "Tooltip")
+        ],
+        default='RegioneVeneto'
     )
 
+    def draw(self,context):
+        layout = self.layout
+        #layout.prop(self, "chosen_parser")
+        box = layout.box()
+        box.label(text="Options:")
+        box.label(text="")
+    
+    def findXmlParser(self, xmlText):
+        '''
+        From Leeno, thanks to Giuserpe!
+        fa un pre-esame del contenuto xml della stringa fornita
+        per determinare se si tratta di un tipo noto
+        (nel qual caso fornisce un parser adatto) oppure no
+        (nel qual caso avvisa di inviare il file allo staff)
+        '''
+
+        parsers = {
+            'xmlns="six.xsd"': ParserXmlSix,
+            'autore="Regione Toscana"': ParserXmlToscana,
+            'autore="Regione Calabria"': ParserXmlToscana,
+            'autore="Regione Campania"': ParserXmlToscana,
+            'autore="Regione Sardegna"': ParserXmlSardegna,
+            'autore="Regione Liguria"': ParserXmlLiguria,
+            'rks=': ParserXmlVeneto,
+            '<pdf>Prezzario_Regione_Basilicata': ParserXmlBasilicata,
+            '<autore>Regione Lombardia': ParserXmlLombardia,
+            '<autore>LOM': ParserXmlLombardia,
+            #'xsi:noNamespaceSchemaLocation="Parte': LeenoImport_XmlLombardia.parseXML1,
+        }
+
+        # controlla se il file è di tipo conosciuto...
+        for pattern, xmlParser in parsers.items():
+            if pattern in xmlText:
+                # si, ritorna il parser corrispondente
+                return xmlParser
+
+        # non trovato... ritorna None
+        return None
+
     def execute(self, context):
-        parser = ParserXmlVeneto()
-        root = parser.get_root(self.filepath)
-        parser.parse(root)
+        xml_content = XMLParser.get_xml_content(self.filepath)
+        parser = self.findXmlParser(xml_content)()
+        if parser is None:
+            self.report({'ERROR'}, "Cannot automatically find a parser for selected file")
+            return {'CANCELLED'}
+        #parser = available_parsers[self.chosen_parser] 
+        parser.parse_items(xml_content)
 
         context.scene.xml_rate_list.clear()
         for rate in parser.xml_rate_list:
