@@ -470,18 +470,12 @@ class RateListPanel(bpy.types.Panel):
         ][1]
         attrib = json.loads(selected_rate.attributes)
         new_label = ""
-        new_label += attrib["id"]
-        new_label += "\n"
-        new_label += attrib["name"]
-        new_label += "\n"
-        new_label += str(attrib["unit"] or "-\n")
-        new_label += "\n"
-        new_label += str(attrib["value"] or "-\n")
-        new_label += "\n"
-        new_label += str(attrib["labor"] or "-\n")
-        new_label += "\n"
-        new_label += str(attrib["safety"] or "-\n")
-        new_label += "\n"
+        new_label += attrib["id"]+"\n"
+        new_label += attrib["name"]+"\n"
+        new_label += str(attrib["unit"] or "-")+"\n"
+        new_label += str(round(attrib["value"],2) or "-")+"\n"
+        new_label += str(round(attrib["labor"],2) or "-")+"\n"
+        new_label += str(round(attrib["safety"],2) or "-")+"\n"
         new_label += "Description:\n"
         description = textwrap.wrap(attrib["desc"], 100)
         for row in description:
@@ -510,7 +504,7 @@ class RateListPanel(bpy.types.Panel):
         box = layout.box()
         row = box.row()
         rate_info = self.get_active_item_info(context).split("\n")
-        if len(rate_info)>4:
+        if len(rate_info) > 5: # arbitrary value to check the list  is populated
             row.label(text=rate_info[0])
             btn_row = row.row(align=True)
             btn_row.alignment = "RIGHT"
