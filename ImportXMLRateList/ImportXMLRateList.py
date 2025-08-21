@@ -19,7 +19,7 @@ class XmlRateItem(TypedDict):
     unit: str
     value: float
     labor: float
-    security: float
+    safety: float
 
 
 class XMLParser:
@@ -68,7 +68,7 @@ class ParserXmlVeneto(XMLParser):
                     "unit": "",
                     "value": 0.0,
                     "labor": 0.0,
-                    "security": 0.0,
+                    "safety": 0.0,
                 }
             )
             n_settore = index
@@ -86,7 +86,7 @@ class ParserXmlVeneto(XMLParser):
                         "unit": "",
                         "value": 0.0,
                         "labor": 0.0,
-                        "security": 0.0,
+                        "safety": 0.0,
                     }
                 )
                 n_capitolo = index
@@ -104,7 +104,7 @@ class ParserXmlVeneto(XMLParser):
                             "unit": "",
                             "value": 0.0,
                             "labor": 0.0,
-                            "security": 0.0,
+                            "safety": 0.0,
                         }
                     )
                     prezzi = paragrafo.findall(".//prezzo")
@@ -130,7 +130,7 @@ class ParserXmlVeneto(XMLParser):
                                 * float(prezzo.attrib["val"])
                                 / 100
                                 or 0.0,
-                                "security": 0.0,
+                                "safety": 0.0,
                             }
                         )
                         index += 1
@@ -472,20 +472,21 @@ class RateListPanel(bpy.types.Panel):
         new_label = ""
         new_label += attrib["id"]
         new_label += "\n"
-        name = textwrap.wrap(attrib["name"], 100)
-        for row in name:
-            new_label += row + "\n"
-        new_label += "                                                        -----\n"
+        new_label += attrib["name"]
+        new_label += "\n"
+        new_label += str(attrib["unit"] or "-\n")
+        new_label += "\n"
+        new_label += str(attrib["value"] or "-\n")
+        new_label += "\n"
+        new_label += str(attrib["labor"] or "-\n")
+        new_label += "\n"
+        new_label += str(attrib["safety"] or "-\n")
+        new_label += "\n"
+        new_label += "Description:\n"
         description = textwrap.wrap(attrib["desc"], 100)
         for row in description:
             new_label += row + "\n"
-        new_label += "                                                        -----\n"
-
-        for key in attrib:
-            new_label += "\n"
-            new_label += key
-            new_label += ": "
-            new_label += str(attrib[key])
+        
         RateListPanel.active_item_info = new_label
 
     def draw(self, context):
@@ -506,15 +507,27 @@ class RateListPanel(bpy.types.Panel):
             "xml_rate_list_active_index",
             rows=8,
         )  # More rows for large lists
-        row = layout.row()
-        row.label(text=self.get_active_item_info(context).split("\n")[0])
-        btn_row = row.row(align=True)
-        btn_row.alignment = "RIGHT"
-        btn_row.operator(ImportRateToActiveCostSchedule.bl_idname, text="", icon="ADD")
-        btn_row.operator(UpdateActiveCostItem.bl_idname, text="", icon="FILE_REFRESH")
+        box = layout.box()
+        row = box.row()
+        rate_info = self.get_active_item_info(context).split("\n")
+        if len(rate_info)>4:
+            row.label(text=rate_info[0])
+            btn_row = row.row(align=True)
+            btn_row.alignment = "RIGHT"
+            btn_row.operator(ImportRateToActiveCostSchedule.bl_idname, text="", icon="ADD")
+            btn_row.operator(UpdateActiveCostItem.bl_idname, text="", icon="FILE_REFRESH")
 
-        for row in self.get_active_item_info(context).split("\n")[1:]:
-            layout.label(text=row)
+            
+            row=box.row()
+            box.label(text=rate_info[1])
+            row=box.row()
+            row.label(text="unit: "+rate_info[2])
+            row.label(text="value: "+rate_info[3])
+            row=box.row()
+            row.label(text="labor: "+rate_info[4])
+            row.label(text="safety: "+rate_info[5])
+            for row in rate_info[6:]:
+                layout.label(text=row)
 
 
 classes = [
