@@ -20,6 +20,7 @@ class XmlRateItem(TypedDict):
     value: float
     labor: float
     equipment: float
+    materials: float
     safety: float
 
 
@@ -100,6 +101,7 @@ class ParserXmlVeneto(XMLParser):
                     "value": 0.0,
                     "labor": 0.0,
                     "equipment": 0.0,
+                    "materials": 0.0,
                     "safety": 0.0,
                 }
             )
@@ -119,6 +121,7 @@ class ParserXmlVeneto(XMLParser):
                         "value": 0.0,
                         "labor": 0.0,
                         "equipment": 0.0,
+                        "materials": 0.0,
                         "safety": 0.0,
                     }
                 )
@@ -138,6 +141,7 @@ class ParserXmlVeneto(XMLParser):
                             "value": 0.0,
                             "labor": 0.0,
                             "equipment": 0.0,
+                            "materials": 0.0,
                             "safety": 0.0,
                         }
                     )
@@ -165,6 +169,7 @@ class ParserXmlVeneto(XMLParser):
                                 / 100
                                 or 0.0,
                                 "equipment": 0.0,
+                                "materials": 0.0,
                                 "safety": 0.0,
                             }
                         )
@@ -317,12 +322,20 @@ class ParserXmlSix(XMLParser):
         return units
     
     @staticmethod
+    def get_unit(units, product):
+        try:
+            unit = units[product.attrib["unitaDiMisuraId"]]
+            return unit
+        except:
+            return ""
+    
+    @staticmethod
     def get_value(product):
         # il prezzo
         # alcune voci non hanno il campo del prezzo essendo
         # voci principali composte da sottovoci
         # le importo comunque, lasciando il valore nullo
-        prezzo = ''
+        prezzo = 0.0
         try:
             for el in product.findall('prdQuotazione'):
                 if el.attrib['listaQuotazioneId'] == listaQuotazioneId:
@@ -331,11 +344,20 @@ class ParserXmlSix(XMLParser):
             try:
                 prezzo = float(product.find('prdQuotazione').attrib['valore'])
             except Exception:
-                prezzo = ""
+                prezzo = 0.0
         if prezzo == 0:
-            prezzo = ""
+            prezzo = 0.0
             
         return prezzo
+
+    @staticmethod
+    def get_value_component(product, cost_value, component_type):
+        if not component_type in ("incidenzaManodopera", "incidenzaMateriali", "incidenzaAttrezzatura"):
+            return 0.0
+        component_ratio = product.find(component_type)
+        return(float(getattr(component_ratio, "text", 0.0))*cost_value/100)
+            
+        
     
     @staticmethod
     def get_level_from_prdId(product):
@@ -361,11 +383,8 @@ class ParserXmlSix(XMLParser):
         xml_content = self.clean_xml_content(xml_content)
         root = self.get_stripped_xml_namespaces_root(xml_content)
         prezzario = root.find('prezzario')
-        print(prezzario)
         units = self.get_units(prezzario)
-        print(units)
         products = prezzario.findall('prodotto')
-        print(products[100])
         
         index = 0
         parents_prdId_indexes = {}
@@ -389,13 +408,12 @@ class ParserXmlSix(XMLParser):
                 if prdId in parents_prdId_indexes.keys():
                     parents += parents_prdId_indexes[prdId]+","
             
-            parents = parents.strip(",")
-            print("VOCE PARENTS"+str(index)+":"+parents)
-            
+            parents = parents.strip(",")            
             
             desc = product.find("prdDescrizione")
             name = desc.attrib["breve"]
             description = desc.attrib["estesa"] if "estesa" in desc.keys() else ""
+            cost_value = self.get_value(product)
             self.xml_rate_list.append(
                 {
                     "index": index,
@@ -405,217 +423,15 @@ class ParserXmlSix(XMLParser):
                     "id": product.attrib["prdId"],
                     "name": name,
                     "desc": description,
-                    "unit": "",
-                    "value": 0.0,
-                    "labor": 0.0,
-                    "equipment": 0.0,
-                    "safety": 0.0,
+                    "unit": self.get_unit(units, product),
+                    "value": cost_value,
+                    "labor": self.get_value_component(product, cost_value, "incidenzaManodopera"),
+                    "equipment": self.get_value_component(product, cost_value, "incidenzaAttrezzatura"),
+                    "materials": self.get_value_component(product, cost_value, "incidenzaMateriali"),
+                    "safety": self.get_value_component(product, cost_value, "safety"),
                 }
             )
             index += 1
-        
-                
-    
-    def parse_items_old(self, xml_content):
-        xml_content = self.clean_xml_content(xml_content)
-        root = self.get_stripped_xml_namespaces_root(xml_content)
-        prezzario = root.find('prezzario')
-        descrizioni = prezzario.findall('przDescrizione')
-        quotazioni = prezzario.findall('listaQuotazione')
-        
-        # soa_categories is not used at the moment
-        soa_categories = self.get_soa_categories(root)
-        
-        units = self.get_units(prezzario)
-
-
-        # infine tiriamo fuori il prezzario
-        # utilizziamo le voci 'true' come base per le descrizioni
-        # aggiungendo quelle delle voci specializzate '.a, .b...'
-        baseCodice = ''
-        baseTextBreve = ''
-        baseTextEstesa = ''
-        artList = {}
-
-        productList = prezzario.findall('prodotto')
-        madre = ''
-        for product in productList:
-            attr = product.attrib
-
-            # il codice del prodotto
-            if not 'prdId' in attr:
-                continue
-            codice = attr['prdId']
-
-            # se c'è, estrae l'unità di misura
-            if 'unitaDiMisuraId' in attr:
-                um = attr['unitaDiMisuraId']
-                # converte l'unità dal codice al simbolo
-                um = units.get(um, "*SCONOSCIUTA*")
-            else:
-                # unità non trovata - la lascia in bianco
-                um = ""
-            
-            prezzo = self.get_value(product)
-            
-            # percentuale manodopera
-            mdo = ""
-            try:
-                mdo = float(product.find('incidenzaManodopera').text) / 100
-            except Exception:
-                mdo = ""
-            if mdo == 0:
-                mdo = ""
-
-            # oneri sicurezza
-            try:
-                oneriSic = float(attr['onereSicurezza']) * prezzo / 100
-            except Exception:
-                oneriSic = ""
-            if oneriSic == 0:
-                oneriSic = ""
-
-            # per le descrizioni, come sempre... processing a seconda
-            # della lingua disponibile / richiesta
-            descs = product.findall('prdDescrizione')
-            textBreve = ""
-            textEstesa = ""
-            madre = ""
-            for desc in descs:
-                descAttr = desc.attrib
-                try:
-                    descLingua = descAttr['lingua']
-                except KeyError:
-                    descLingua = None
-                if lingua is None or descLingua is None or lingua == descLingua:
-
-                    if 'breve' in descAttr and 'estesa' in descAttr:
-                        if descAttr['breve'] in descAttr['estesa']:
-                            textBreve = descAttr['estesa'] + '\n'
-                        else:
-                            # ~textEstesa = descAttr['estesa'] + '\n' + descAttr['breve'] + '\n'
-                            textEstesa = descAttr['breve'] + '\n' + descAttr['estesa'] + '\n'
-                            madre = textEstesa[: -len('\n')]
-     
-                        if descAttr['breve'] == descAttr['estesa']:
-                            textEstesa = madre +  descAttr['breve'] + '\n'
-                    try:
-                        if 'breve' in descAttr and not 'estesa' in descAttr:
-                            # ~textEstesa = madre + descAttr['breve'] + '\n'
-                            if descAttr['breve'][2] in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
-                                textEstesa = madre + descAttr['breve'] + '\n'
-                            else:
-                                textEstesa = madre + descAttr['breve'] + '\n'
-                    except:
-                        pass
-
-
-            # controlla se la voce è una voce 'base' o una specializzazione
-            # della voce base. Il campo 'voce' è totalmente inaffidabile, quindi
-            # consideriamo come 'base' delle voci a valore nullo e le azzeriamo
-            # ad ogni nuova base e/o cambio di numerazione
-            base = (prezzo == "")
-            if not base and not codice.startswith(baseCodice):
-                baseTextBreve = ""
-                baseTextEstesa = ""
-
-            # se voce base, tiene buona la descrizione e la salva anche come base
-            # per le prossime voci (estese). Per funzionare, questo presuppone che
-            # nell' XML le voci estese seguano quella base in ordine, e che tutte le voci
-            # siano correttamente etichettate come voce = 'true' se voci base
-            # probabilmente si può fare di meglio...
-            if base:
-                baseTextBreve = textBreve + '\n'
-                baseTextEstesa = textEstesa + '\n'
-                baseCodice = codice
-
-            if not base and codice.startswith(baseCodice):
-                # ~textBreve = baseTextBreve +'- '+ textBreve
-                # ~textEstesa = baseTextEstesa +'- '+ textEstesa
-                textBreve = baseTextBreve + textBreve
-                textEstesa = baseTextEstesa + textEstesa
-
-            # utilizza solo la descrizione lunga per LeenO
-            if len(textBreve) > len(textEstesa):
-                desc = textBreve
-            else:
-                desc = textEstesa
-
-            if len(codice.split('.')) == 4:
-                madre = desc
-            if len(codice.split('.')) > 4:
-                # ~if madre not in desc:
-                desc = madre + desc
-
-            # giochino per garantire che la prima stringa abbia una lunghezza minima
-            # in modo che LO formatti correttamente la cella
-            # ~desc = LeenoImport.fixParagraphSize(desc)
-            
-            desc = self.clean_string(desc)
-            
-            # gruppo, nel caso ci sia
-            try:
-                grpId = product.find('prdGrpValore').attrib['grpValoreId']
-            except Exception:
-                grpId = ""
-
-            # compone l'articolo e lo mette in lista
-            # esclude dall'elenco le voci senza prezzo
-            # ~if len(codice.split('.')) > 2 and prezzo != '':
-            artList[codice] = {
-                'codice': codice,
-                'desc': desc,
-                'um': um,
-                'prezzo': prezzo,
-                'mdo': mdo,
-                'sicurezza': oneriSic,
-                'gruppo': grpId
-            }
-
-        # in alcuni casi sono presenti i gruppi, che poi sono le nostre
-        # supercategorie e categorie
-        # i gruppi hanno, ovviamente, una numerazione e degli ID che non c'entrano
-        # un tubo con gli articoli... ma gli articoli portano un riferimento al gruppo
-        # quindi una volta letti gli articoli bisogna fare uno scan a rovescio per
-        # ritrovare i codici corretti delle categorie
-        gruppi = {}
-        superGruppi = {}
-        try:
-            gruppo = root.find('gruppo')
-            grpValori = gruppo.findall('grpValore')
-            for grpValore in grpValori:
-                continue # non capisco perché, ma senza questa riga va in errore
-                grpId = grpValore.attrib['grpValoreId']
-                vlrId = grpValore.attrib['vlrId']
-                vlrDesc = grpValore.find('vlrDescrizione').attrib['breve']
-                if '.' in vlrId:
-                    sgId = vlrId.split('.')[0]
-                    gruppi[grpId] = {'cat': vlrId, 'desc': vlrDesc, 'superGroup': sgId}
-                else:
-                    superGruppi[vlrId] = vlrDesc
-        except Exception:
-            pass
-
-        # crea le categorie e supercategoria
-        # è un po' un caos, ma è l'unico modo rapido per farlo
-        catList = {}
-        superCatList = {}
-        if len(gruppi) > 0:
-            for codice, articolo in artList.items():
-                try:
-                    splitCodice = codice.split('.')
-                    codiceCat = splitCodice[0] + '.' + splitCodice[1]
-                    codiceSuperCat = splitCodice[0]
-                except:
-                    pass
-                gruppo = articolo['gruppo']
-                if gruppo is None or gruppo == '':
-                    continue
-                groupData = gruppi[gruppo]
-                if not codiceCat in catList:
-                    catList[codiceCat] = groupData['desc']
-                if not codiceSuperCat in superCatList:
-                    superCatList[codiceSuperCat] = superGruppi[groupData['superGroup']]
     
 
 class ImportXMLRateList(Operator, ImportHelper):
@@ -970,6 +786,7 @@ class RateListPanel(bpy.types.Panel):
         new_label += str(round(attrib["value"],2) or "-")+"\n"
         new_label += str(round(attrib["labor"],2) or "-")+"\n"
         new_label += str(round(attrib["equipment"],2) or "-")+"\n"
+        new_label += str(round(attrib["materials"],2) or "-")+"\n"
         new_label += str(round(attrib["safety"],2) or "-")+"\n"
         new_label += "Description:\n"
         description = textwrap.wrap(attrib["desc"], 100)
@@ -1015,9 +832,11 @@ class RateListPanel(bpy.types.Panel):
             row=box.row()
             row.label(text="labor: "+rate_info[4])
             row.label(text="equipment: "+rate_info[5])
-            row.label(text="safety: "+rate_info[6])
+            row=box.row()
+            row.label(text="materials: "+rate_info[6])
+            row.label(text="safety: "+rate_info[7])
             box = layout.box()
-            for row in rate_info[7:]:
+            for row in rate_info[8:]:
                 box.label(text=row)
 
 
