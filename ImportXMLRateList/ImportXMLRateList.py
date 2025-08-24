@@ -33,10 +33,10 @@ class XMLParser:
 
     def __init__(self):
         self.xml_rate_list = []
-        
+
     @staticmethod
     def get_xml_content(filename):
-        with open(filename, 'r', errors='ignore', encoding="utf8") as file:
+        with open(filename, "r", errors="ignore", encoding="utf8") as file:
             data = file.read()
         return data
 
@@ -50,33 +50,49 @@ class XMLParser:
 
     def clean_xml_content(self, data):
         import re
+
         # clean non printable characters
-        return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', data)
-    
+        return re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", data)
+
     def get_stripped_xml_namespaces_root(self, data):
         import xml.etree.ElementTree as ET
         from io import StringIO
+
         it = ET.iterparse(StringIO(data))
         for _, el in it:
-            _, _, el.tag = el.tag.rpartition('}')
+            _, _, el.tag = el.tag.rpartition("}")
         return it.root
-    
+
     def get_root(self, data):
         import xml.etree.ElementTree as ET
         from io import StringIO
+
         tree = ET.parse(StringIO(data))
         return tree.root
-    
+
     def clean_string(self, text):
-        #sistema_cose (da Leeno)
-        text.replace('\t', ' ').replace('Ã¨', 'è').replace('','').replace(
-            'Â°', '°').replace('Ã', 'à').replace(' $', '').replace('Ó', 'à').replace(
-            'Þ', 'é').replace('&#x13;','').replace('&#xD;&#xA;','').replace(
-            '&#xA;','').replace('&apos;',"'").replace('&#x3;&#x1;','').replace('\n \n','\n')
-        while '  ' in desc:
-            text = text.replace('  ', ' ')
-        while '\n\n' in desc:
-            text = text.replace('\n\n', '\n')
+        # sistema_cose (da Leeno)
+        text.replace("\t", " ").replace("Ã¨", "è").replace("", "").replace(
+            "Â°", "°"
+        ).replace("Ã", "à").replace(" $", "").replace("Ó", "à").replace(
+            "Þ", "é"
+        ).replace(
+            "&#x13;", ""
+        ).replace(
+            "&#xD;&#xA;", ""
+        ).replace(
+            "&#xA;", ""
+        ).replace(
+            "&apos;", "'"
+        ).replace(
+            "&#x3;&#x1;", ""
+        ).replace(
+            "\n \n", "\n"
+        )
+        while "  " in desc:
+            text = text.replace("  ", " ")
+        while "\n\n" in desc:
+            text = text.replace("\n\n", "\n")
         text = text.strip()
         return text
 
@@ -208,23 +224,29 @@ class ParserXmlSardegna(XMLParser):
 
 class ParserXmlSix(XMLParser):
     @staticmethod
-    def get_description_in_language(items,language):
+    def get_description_in_language(items, language):
         # code from Leeno to be adapted
         lingue = {}
         lingua = None
-        languages_dict = {'it': 'Italiano', 'de': 'Deutsch', 'en': 'English', 'fr': 'Français', 'es': 'Español'}
+        languages_dict = {
+            "it": "Italiano",
+            "de": "Deutsch",
+            "en": "English",
+            "fr": "Français",
+            "es": "Español",
+        }
         try:
             for desc in descrizioni:
-                lingua = desc.attrib['lingua']
+                lingua = desc.attrib["lingua"]
                 lExt = languages_dict.get(lingua, lingua)
                 lingue[lExt] = lingua
-                defaultTitle = desc.attrib['breve']
+                defaultTitle = desc.attrib["breve"]
             try:
-                anno = defaultTitle.split(' ')[1]
+                anno = defaultTitle.split(" ")[1]
                 for quota in quotazioni:
-                    lqtId = quota.attrib['lqtId']
+                    lqtId = quota.attrib["lqtId"]
                     if lqtId == anno:
-                        listaQuotazioneId = quota.attrib['listaQuotazioneId']
+                        listaQuotazioneId = quota.attrib["listaQuotazioneId"]
                         break
             except:
                 pass
@@ -232,23 +254,24 @@ class ParserXmlSix(XMLParser):
             pass
 
         if len(lingue) > 1:
-            lingue['Tutte'] = 'tutte'
-            lingue['Annulla'] = 'annulla'
+            lingue["Tutte"] = "tutte"
+            lingue["Annulla"] = "annulla"
             lingua = Dialogs.MultiButton(
                 Icon="Icons-Big/question.png",
                 Title="Scelta lingue",
                 Text="Il file fornito è un prezzario multilinguale\n\nSelezionare la lingua da importare\noppure 'Tutte' per ottenere un prezzario multilinguale",
-                Buttons=lingue)
+                Buttons=lingue,
+            )
             # se si chiude la finestra il dialogo ritorna 'None'
             # lo consideriamo come un 'Annulla'
             if lingua is None:
-                lingua = 'annulla'
-            if lingua == 'tutte':
+                lingua = "annulla"
+            if lingua == "tutte":
                 lingua = None
         else:
             lingua = None
 
-        if lingua == 'annulla':
+        if lingua == "annulla":
             return None
 
         # da qui, se lingua == None importa tutte le lingue presenti
@@ -259,15 +282,15 @@ class ParserXmlSix(XMLParser):
         # altrimenti le estrea tutte e le concatena una dopo l'altra
         nome = ""
         if lingua is None:
-            nome = descrizioni[0].attrib['breve']
+            nome = descrizioni[0].attrib["breve"]
             for desc in range(1, len(descrizioni)):
-                nome = nome + '\n' + descrizioni[desc].attrib['breve']
+                nome = nome + "\n" + descrizioni[desc].attrib["breve"]
         else:
             for desc in descrizioni:
-                if desc.attrib['lingua'] == lingua:
-                    nome = desc.attrib['breve']
+                if desc.attrib["lingua"] == lingua:
+                    nome = desc.attrib["breve"]
                     break
-    
+
     @staticmethod
     def get_soa_categories(root):
         # se ci sono le categorie SOA, estrae prima quelle
@@ -275,52 +298,52 @@ class ParserXmlSix(XMLParser):
         # e di come viene richiesta la cosa
         # attualmente non servono, ma non si sa mai...
         categorieSOA = {}
-        catList = root.findall('categoriaSOA')
+        catList = root.findall("categoriaSOA")
         for cat in catList:
             attr = cat.attrib
             try:
-                soaId = attr['soaId']
-                soaCategoria = attr['soaCategoria']
-                descs = cat.findall('soaDescrizione')
+                soaId = attr["soaId"]
+                soaCategoria = attr["soaCategoria"]
+                descs = cat.findall("soaDescrizione")
                 text = ""
                 for desc in descs:
                     descAttr = desc.attrib
                     try:
-                        descLingua = descAttr['lingua']
+                        descLingua = descAttr["lingua"]
                     except KeyError:
                         descLingua = None
                     if lingua is None or descLingua is None or lingua == descLingua:
-                        text = text + descAttr['breve'] + '\n'
+                        text = text + descAttr["breve"] + "\n"
                 if text != "":
-                    text = text[: -len('\n')]
+                    text = text[: -len("\n")]
 
-                categorieSOA[soaCategoria] = {'soaId': soaId, 'descrizione': text}
+                categorieSOA[soaCategoria] = {"soaId": soaId, "descrizione": text}
             except KeyError:
                 pass
-            
+
         return categorieSOA
-    
+
     @staticmethod
     def get_units(prezzario):
         # legge le unità di misura
         # siccome ci interessano soli i simboli e non il resto
         # non serve il processing per le lingue
         units = {}
-        umList = prezzario.findall('unitaDiMisura')
+        umList = prezzario.findall("unitaDiMisura")
         for um in umList:
             attr = um.attrib
             try:
-                if 'simbolo' in attr:
-                    sym = attr['simbolo']
+                if "simbolo" in attr:
+                    sym = attr["simbolo"]
                 else:
-                    sym = attr['udmId']
-                umId = attr['unitaDiMisuraId']
+                    sym = attr["udmId"]
+                umId = attr["unitaDiMisuraId"]
                 units[umId] = sym
             except KeyError:
                 pass
-            
+
         return units
-    
+
     @staticmethod
     def get_unit(units, product):
         try:
@@ -328,7 +351,7 @@ class ParserXmlSix(XMLParser):
             return unit
         except:
             return ""
-    
+
     @staticmethod
     def get_value(product):
         # il prezzo
@@ -337,79 +360,81 @@ class ParserXmlSix(XMLParser):
         # le importo comunque, lasciando il valore nullo
         prezzo = 0.0
         try:
-            for el in product.findall('prdQuotazione'):
-                if el.attrib['listaQuotazioneId'] == listaQuotazioneId:
-                    prezzo = float(el.attrib['valore'])
+            for el in product.findall("prdQuotazione"):
+                if el.attrib["listaQuotazioneId"] == listaQuotazioneId:
+                    prezzo = float(el.attrib["valore"])
         except:
             try:
-                prezzo = float(product.find('prdQuotazione').attrib['valore'])
+                prezzo = float(product.find("prdQuotazione").attrib["valore"])
             except Exception:
                 prezzo = 0.0
         if prezzo == 0:
             prezzo = 0.0
-            
+
         return prezzo
 
     @staticmethod
     def get_value_component(product, cost_value, component_type):
-        if not component_type in ("incidenzaManodopera", "incidenzaMateriali", "incidenzaAttrezzatura"):
+        if not component_type in (
+            "incidenzaManodopera",
+            "incidenzaMateriali",
+            "incidenzaAttrezzatura",
+        ):
             return 0.0
         component_ratio = product.find(component_type)
-        return(float(getattr(component_ratio, "text", 0.0))*cost_value/100)
-            
-        
-    
+        return float(getattr(component_ratio, "text", 0.0)) * cost_value / 100
+
     @staticmethod
     def get_level_from_prdId(product):
         return len(product.attrib["prdId"].split(".")) - 1
-    
+
     @staticmethod
     def is_parent(product):
         # TODO: da migliorare: la voce può essere un gruppo e avere
         #       una quotazione usata impropriamente per definire altre cose
         return not len(product.findall("prdQuotazione")) > 0
-    
+
     @staticmethod
     def get_parents(product):
-        results = [item for item in self.xml_rate_list if item['id'] == 'NYC']
-        
+        results = [item for item in self.xml_rate_list if item["id"] == "NYC"]
+
         return parents_ids
-    
+
     def parse_items(self, xml_content):
-        '''
+        """
         parser for six xml structure. the tree generation is based
         on the prdId structure
-        '''
+        """
         xml_content = self.clean_xml_content(xml_content)
         root = self.get_stripped_xml_namespaces_root(xml_content)
-        prezzario = root.find('prezzario')
+        prezzario = root.find("prezzario")
         units = self.get_units(prezzario)
-        products = prezzario.findall('prodotto')
-        
+        products = prezzario.findall("prodotto")
+
         index = 0
         parents_prdId_indexes = {}
-        
-        for product in products: 
-            
+
+        for product in products:
+
             level = self.get_level_from_prdId(product)
-            
+
             is_parent = True if level == 0 else self.is_parent(product)
-            
+
             if is_parent:
                 # add item to parent structure
                 parents_prdId_indexes[product.attrib["prdId"]] = str(index)
-                
+
             parents = ""
-            
-            parts = product.attrib["prdId"].split('.')
-            parents_prdId = ['.'.join(parts[:i]) for i in range(len(parts)-1, 0, -1)]
+
+            parts = product.attrib["prdId"].split(".")
+            parents_prdId = [".".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
 
             for prdId in parents_prdId:
                 if prdId in parents_prdId_indexes.keys():
-                    parents += parents_prdId_indexes[prdId]+","
-            
-            parents = parents.strip(",")            
-            
+                    parents += parents_prdId_indexes[prdId] + ","
+
+            parents = parents.strip(",")
+
             desc = product.find("prdDescrizione")
             name = desc.attrib["breve"]
             description = desc.attrib["estesa"] if "estesa" in desc.keys() else ""
@@ -425,14 +450,20 @@ class ParserXmlSix(XMLParser):
                     "desc": description,
                     "unit": self.get_unit(units, product),
                     "value": cost_value,
-                    "labor": self.get_value_component(product, cost_value, "incidenzaManodopera"),
-                    "equipment": self.get_value_component(product, cost_value, "incidenzaAttrezzatura"),
-                    "materials": self.get_value_component(product, cost_value, "incidenzaMateriali"),
+                    "labor": self.get_value_component(
+                        product, cost_value, "incidenzaManodopera"
+                    ),
+                    "equipment": self.get_value_component(
+                        product, cost_value, "incidenzaAttrezzatura"
+                    ),
+                    "materials": self.get_value_component(
+                        product, cost_value, "incidenzaMateriali"
+                    ),
                     "safety": self.get_value_component(product, cost_value, "safety"),
                 }
             )
             index += 1
-    
+
 
 class ImportXMLRateList(Operator, ImportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
@@ -449,28 +480,32 @@ class ImportXMLRateList(Operator, ImportHelper):
         name="Parser",
         description="Choose the available parser",
         items=[
-            ('Auto', "Auto", "Try to guess which importer is more suitable for the given data"),
-            ('RegioneVeneto', "Regione Veneto", "Tooltip"),
-            ('RegioneFriuliVeneziaGiulia', "Regione Friuli Venezia Giulia", "Tooltip")
+            (
+                "Auto",
+                "Auto",
+                "Try to guess which importer is more suitable for the given data",
+            ),
+            ("RegioneVeneto", "Regione Veneto", "Tooltip"),
+            ("RegioneFriuliVeneziaGiulia", "Regione Friuli Venezia Giulia", "Tooltip"),
         ],
-        default='RegioneVeneto'
+        default="RegioneVeneto",
     )
 
-    def draw(self,context):
+    def draw(self, context):
         layout = self.layout
-        #layout.prop(self, "chosen_parser")
+        # layout.prop(self, "chosen_parser")
         box = layout.box()
         box.label(text="Options:")
         box.label(text="")
-    
+
     def findXmlParser(self, xmlText):
-        '''
+        """
         From Leeno, thanks to Giuserpe!
         fa un pre-esame del contenuto xml della stringa fornita
         per determinare se si tratta di un tipo noto
         (nel qual caso fornisce un parser adatto) oppure no
         (nel qual caso avvisa di inviare il file allo staff)
-        '''
+        """
 
         parsers = {
             'xmlns="six.xsd"': ParserXmlSix,
@@ -479,10 +514,10 @@ class ImportXMLRateList(Operator, ImportHelper):
             'autore="Regione Campania"': ParserXmlToscana,
             'autore="Regione Sardegna"': ParserXmlSardegna,
             'autore="Regione Liguria"': ParserXmlLiguria,
-            'rks=': ParserXmlVeneto,
-            '<pdf>Prezzario_Regione_Basilicata': ParserXmlBasilicata,
-            '<autore>Regione Lombardia': ParserXmlLombardia,
-            '<autore>LOM': ParserXmlLombardia,
+            "rks=": ParserXmlVeneto,
+            "<pdf>Prezzario_Regione_Basilicata": ParserXmlBasilicata,
+            "<autore>Regione Lombardia": ParserXmlLombardia,
+            "<autore>LOM": ParserXmlLombardia,
             #'xsi:noNamespaceSchemaLocation="Parte': LeenoImport_XmlLombardia.parseXML1,
         }
 
@@ -499,9 +534,11 @@ class ImportXMLRateList(Operator, ImportHelper):
         xml_content = XMLParser.get_xml_content(self.filepath)
         parser = self.findXmlParser(xml_content)()
         if parser is None:
-            self.report({'ERROR'}, "Cannot automatically find a parser for selected file")
-            return {'CANCELLED'}
-        #parser = available_parsers[self.chosen_parser] 
+            self.report(
+                {"ERROR"}, "Cannot automatically find a parser for selected file"
+            )
+            return {"CANCELLED"}
+        # parser = available_parsers[self.chosen_parser]
         parser.parse_items(xml_content)
 
         context.scene.xml_rate_list.clear()
@@ -645,12 +682,14 @@ class XmlRateCustomUIList(bpy.types.UIList):
             row.alignment = "RIGHT"
             if item.level != 0:
                 row.label(text="  " * item.level)
-            op = row.operator("xml_rate_list_ui.toggle", text="", icon=icon_expand, emboss=False)
+            op = row.operator(
+                "xml_rate_list_ui.toggle", text="", icon=icon_expand, emboss=False
+            )
             row.label(text=item.name)
             op.index = index
         else:
             # Child item
-            layout.label(text="          "*item.level + item.name)
+            layout.label(text="          " * item.level + item.name)
 
     def filter_items(self, context, data, propname):
         items = getattr(data, propname)
@@ -780,19 +819,19 @@ class RateListPanel(bpy.types.Panel):
         ][1]
         attrib = json.loads(selected_rate.attributes)
         new_label = ""
-        new_label += attrib["id"]+"\n"
-        new_label += attrib["name"]+"\n"
-        new_label += str(attrib["unit"] or "-")+"\n"
-        new_label += str(round(attrib["value"],2) or "-")+"\n"
-        new_label += str(round(attrib["labor"],2) or "-")+"\n"
-        new_label += str(round(attrib["equipment"],2) or "-")+"\n"
-        new_label += str(round(attrib["materials"],2) or "-")+"\n"
-        new_label += str(round(attrib["safety"],2) or "-")+"\n"
+        new_label += attrib["id"] + "\n"
+        new_label += attrib["name"] + "\n"
+        new_label += str(attrib["unit"] or "-") + "\n"
+        new_label += str(round(attrib["value"], 2) or "-") + "\n"
+        new_label += str(round(attrib["labor"], 2) or "-") + "\n"
+        new_label += str(round(attrib["equipment"], 2) or "-") + "\n"
+        new_label += str(round(attrib["materials"], 2) or "-") + "\n"
+        new_label += str(round(attrib["safety"], 2) or "-") + "\n"
         new_label += "Description:\n"
         description = textwrap.wrap(attrib["desc"], 100)
         for row in description:
             new_label += row + "\n"
-        
+
         RateListPanel.active_item_info = new_label
 
     def draw(self, context):
@@ -816,25 +855,29 @@ class RateListPanel(bpy.types.Panel):
         box = layout.box()
         row = box.row()
         rate_info = self.get_active_item_info(context).split("\n")
-        if len(rate_info) > 5: # arbitrary value to check the list  is populated
+        if len(rate_info) > 5:  # arbitrary value to check the list  is populated
             row.label(text=rate_info[0])
             btn_row = row.row(align=True)
             btn_row.alignment = "RIGHT"
-            btn_row.operator(ImportRateToActiveCostSchedule.bl_idname, text="", icon="ADD")
-            btn_row.operator(UpdateActiveCostItem.bl_idname, text="", icon="FILE_REFRESH")
-            row=box.row()
+            btn_row.operator(
+                ImportRateToActiveCostSchedule.bl_idname, text="", icon="ADD"
+            )
+            btn_row.operator(
+                UpdateActiveCostItem.bl_idname, text="", icon="FILE_REFRESH"
+            )
+            row = box.row()
             box.label(text=rate_info[1])
-            row=box.row()
-            row.label(text="unit: "+rate_info[2])
-            row.label(text="value: "+rate_info[3])
+            row = box.row()
+            row.label(text="unit: " + rate_info[2])
+            row.label(text="value: " + rate_info[3])
             box = layout.box()
             box.label(text="Cost Value Components:")
-            row=box.row()
-            row.label(text="labor: "+rate_info[4])
-            row.label(text="equipment: "+rate_info[5])
-            row=box.row()
-            row.label(text="materials: "+rate_info[6])
-            row.label(text="safety: "+rate_info[7])
+            row = box.row()
+            row.label(text="labor: " + rate_info[4])
+            row.label(text="equipment: " + rate_info[5])
+            row = box.row()
+            row.label(text="materials: " + rate_info[6])
+            row.label(text="safety: " + rate_info[7])
             box = layout.box()
             for row in rate_info[8:]:
                 box.label(text=row)
