@@ -1,27 +1,67 @@
 import bpy
 from bl_ui.generic_ui_list import draw_ui_list
 
+from bpy_extras.io_utils import ImportHelper
+
 from bonsai import tool
 
 
 bpy.ops.point_cloud_visualizer.add_pcv_helper()
 
+class AddPC(bpy.types.Operator, ImportHelper):
+    """Add Point Cloud reference to current Ifc"""
+    bl_idname = "import_test.some_data"  # important since its how bpy.ops.import_test.some_data is constructed
+    bl_label = "Import Some Data"
+
+    # ImportHelper mix-in class uses this.
+    filename_ext = ".ply"
+
+    filter_glob: bpy.props.StringProperty(
+        default="*.ply",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+
+    def execute(self, context):
+        return read_some_data(context, self.filepath, self.use_setting)
 
 class LoadPC(bpy.types.Operator):
-    """Tooltip"""
+    """Loads the point cloud with Point Cloud Visualizer addon."""
     bl_idname = "object.load_point_cloud"
     bl_label = "Load Point Cloud"
 
     @classmethod
     def poll(cls, context):
-        return True
-
+        try:
+            import point_cloud_visualizer
+            return True
+        except:
+            return false
+    
+    @staticmethod
+    def assign_pcv_properties(object, filepath):
+        print(filepath)
+    
     def execute(self, context):
-        bpy.context.scene.ifc_point_cloud_list.clear()
-        pcs=IfcPointCloudPanel.find_pcs()
-        for item in pcs:
-            list_item = bpy.context.scene.ifc_point_cloud_list.add()
-            list_item.name = item.Description
+        file = tool.Ifc.get()
+        ifc_id = bpy.context.scene.ifc_point_cloud_list[bpy.context.scene.ifc_point_cloud_list_active_index].ifc_definition_id
+        ifc_ref = file.by_id(ifc_id)
+        proxies = []
+        for rel in ifc_ref.DocumentRefForObjects:
+            for obj in rel.RelatedObjects:
+                proxies.append(obj)
+        if len(proxies) == 0:
+            bpy.ops.object.empty_add(type='PLAIN_AXES')
+            bpy.context.active_object.name = ifc_ref.Description
+            bpy.ops.bim.assign_class(ifc_class="IfcAnnotation")
+            bpy.ops.bim.assign_container()
+            LoadPC.assign_pcv_properties(bpy.context.active_object, ifc_ref.Location)
+        for ifc_obj in proxies:
+            bl_obj = tool.Ifc.get_object(ifc_obj)
+            LoadPC.assign_pcv_properties(bl_obj, ifc_ref.Location)
+        
+        
         return {'FINISHED'}
 
 
@@ -40,11 +80,13 @@ class UpdateLinked_PC(bpy.types.Operator):
         for item in pcs:
             list_item = bpy.context.scene.ifc_point_cloud_list.add()
             list_item.name = item.Description
+            list_item.ifc_definition_id=item.id()
         return {'FINISHED'}
 
 
 class MyPropGroup(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty()
+    ifc_definition_id: bpy.props.IntProperty()
 
 
 class IfcPointCloudPanel(bpy.types.Panel):
@@ -73,8 +115,12 @@ class IfcPointCloudPanel(bpy.types.Panel):
             UpdateLinked_PC.bl_idname, text="", icon='FILE_REFRESH'
         )
         btn_row.operator(
-            LoadPC.bl_idname, text="", icon='ADD'
+            AddPC.bl_idname, text="", icon='ADD'
         )
+        btn_row.operator(
+            LoadPC.bl_idname, text="", icon='HIDE_OFF'
+        )
+        
         draw_ui_list(
             layout,
             context,
@@ -85,6 +131,7 @@ class IfcPointCloudPanel(bpy.types.Panel):
 
 
 classes = [
+    AddPC,
     LoadPC,
     UpdateLinked_PC,
     MyPropGroup,
