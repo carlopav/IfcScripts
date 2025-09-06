@@ -42,6 +42,17 @@ class LoadPC(bpy.types.Operator):
     @staticmethod
     def assign_pcv_properties(object, filepath):
         print(filepath)
+        import point_cloud_visualizer as pcv
+        
+        if(object):
+            props = object.point_cloud_visualizer
+            props.data.filepath = bpy.path.abspath(filepath)#'//points.ply')
+            props.data.filetype = 'PLY'
+            pd = pcv.mechanist.PCVStoker.load(props, operator=None, )
+            if(pd):
+                pcv.mechanist.PCVMechanist.init()
+                pcv.mechanist.PCVMechanist.data(object, pd, draw=True, )
+                pcv.mechanist.PCVMechanist.tag_redraw()
     
     def execute(self, context):
         file = tool.Ifc.get()
@@ -60,7 +71,6 @@ class LoadPC(bpy.types.Operator):
         for ifc_obj in proxies:
             bl_obj = tool.Ifc.get_object(ifc_obj)
             LoadPC.assign_pcv_properties(bl_obj, ifc_ref.Location)
-        
         
         return {'FINISHED'}
 
