@@ -6,7 +6,26 @@ from bpy_extras.io_utils import ImportHelper
 from bonsai import tool
 
 
-bpy.ops.point_cloud_visualizer.add_pcv_helper()
+def assign_pcv_properties(object, filepath):
+    import point_cloud_visualizer as pcv
+    
+    if(object):
+        props = object.point_cloud_visualizer
+        props.data.filepath = bpy.path.abspath(filepath)#'//points.ply')
+        props.data.filetype = 'PLY'
+        pd = pcv.mechanist.PCVStoker.load(props, operator=None, )
+        if(pd):
+            pcv.mechanist.PCVMechanist.init()
+            pcv.mechanist.PCVMechanist.data(object, pd, draw=True, )
+            pcv.mechanist.PCVMechanist.tag_redraw()
+
+
+def create_ifc_annotation(ifc_ref):
+    bpy.ops.object.empty_add(type='PLAIN_AXES')
+    bpy.context.active_object.name = ifc_ref.Description
+    bpy.ops.bim.assign_class(ifc_class="IfcAnnotation")
+    bpy.ops.bim.assign_container()
+    
 
 class AddPC(bpy.types.Operator, ImportHelper):
     """Add Point Cloud reference to current Ifc"""
@@ -24,7 +43,7 @@ class AddPC(bpy.types.Operator, ImportHelper):
 
 
     def execute(self, context):
-        return read_some_data(context, self.filepath, self.use_setting)
+        return
 
 class LoadPC(bpy.types.Operator):
     """Loads the point cloud with Point Cloud Visualizer addon."""
@@ -39,20 +58,6 @@ class LoadPC(bpy.types.Operator):
         except:
             return false
     
-    @staticmethod
-    def assign_pcv_properties(object, filepath):
-        print(filepath)
-        import point_cloud_visualizer as pcv
-        
-        if(object):
-            props = object.point_cloud_visualizer
-            props.data.filepath = bpy.path.abspath(filepath)#'//points.ply')
-            props.data.filetype = 'PLY'
-            pd = pcv.mechanist.PCVStoker.load(props, operator=None, )
-            if(pd):
-                pcv.mechanist.PCVMechanist.init()
-                pcv.mechanist.PCVMechanist.data(object, pd, draw=True, )
-                pcv.mechanist.PCVMechanist.tag_redraw()
     
     def execute(self, context):
         file = tool.Ifc.get()
@@ -63,14 +68,11 @@ class LoadPC(bpy.types.Operator):
             for obj in rel.RelatedObjects:
                 proxies.append(obj)
         if len(proxies) == 0:
-            bpy.ops.object.empty_add(type='PLAIN_AXES')
-            bpy.context.active_object.name = ifc_ref.Description
-            bpy.ops.bim.assign_class(ifc_class="IfcAnnotation")
-            bpy.ops.bim.assign_container()
-            LoadPC.assign_pcv_properties(bpy.context.active_object, ifc_ref.Location)
+            create_ifc_annotation(ifc_ref)
+            assign_pcv_properties(bpy.context.active_object, ifc_ref.Location)
         for ifc_obj in proxies:
             bl_obj = tool.Ifc.get_object(ifc_obj)
-            LoadPC.assign_pcv_properties(bl_obj, ifc_ref.Location)
+            assign_pcv_properties(bl_obj, ifc_ref.Location)
         
         return {'FINISHED'}
 
@@ -100,11 +102,13 @@ class MyPropGroup(bpy.types.PropertyGroup):
 
 
 class IfcPointCloudPanel(bpy.types.Panel):
-    bl_label = "Ifc Point Cloud Reference"
-    bl_idname = "IfcPointCloudPanel"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "IfcPC"
+    bl_label = "Point Clouds"
+    bl_idname = "BONSAI_PT_custom_panel"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "scene"
+    bl_category = "BIM"  # Add to BIM tab category
+    bl_order = 1000
     
     @staticmethod
     def find_pcs():
@@ -117,27 +121,30 @@ class IfcPointCloudPanel(bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
-        row = layout.row()
-        row.label(text="Update list:")
-        btn_row = row.row(align=True)
-        btn_row.alignment = "RIGHT"
-        btn_row.operator(
-            UpdateLinked_PC.bl_idname, text="", icon='FILE_REFRESH'
-        )
-        btn_row.operator(
-            AddPC.bl_idname, text="", icon='ADD'
-        )
-        btn_row.operator(
-            LoadPC.bl_idname, text="", icon='HIDE_OFF'
-        )
-        
-        draw_ui_list(
-            layout,
-            context,
-            list_path="scene.ifc_point_cloud_list",
-            active_index_path="scene.ifc_point_cloud_list_active_index",
-            unique_id="ifc_point_cloud_list_id",
-        )
+        if bpy.context.scene.ifc_point_cloud_panel_is_editing:
+            row = layout.row()
+            row.label(text="Update list:")
+            btn_row = row.row(align=True)
+            btn_row.alignment = "RIGHT"
+            btn_row.operator(
+                UpdateLinked_PC.bl_idname, text="", icon='FILE_REFRESH'
+            )
+            btn_row.operator(
+                AddPC.bl_idname, text="", icon='ADD'
+            )
+            btn_row.operator(
+                LoadPC.bl_idname, text="", icon='HIDE_OFF'
+            )
+            
+            draw_ui_list(
+                layout,
+                context,
+                list_path="scene.ifc_point_cloud_list",
+                active_index_path="scene.ifc_point_cloud_list_active_index",
+                unique_id="ifc_point_cloud_list_id",
+            )
+        else:
+            layout.label(icon = "OUTLINER_DATA_POINTCLOUD", text="O Point Clouds Found")
 
 
 classes = [
@@ -155,12 +162,14 @@ def register():
     class_register()
     bpy.types.Scene.ifc_point_cloud_list = bpy.props.CollectionProperty(type=MyPropGroup)
     bpy.types.Scene.ifc_point_cloud_list_active_index = bpy.props.IntProperty()
+    bpy.types.Scene.ifc_point_cloud_panel_is_editing = bpy.props.BoolProperty(default=True)
 
 
 def unregister():
     class_unregister()
     del bpy.types.Scene.ifc_point_cloud_list
     del bpy.types.Scene.ifc_point_cloud_list_active_index
+    del bpy.types.Scene.ifc_point_cloud_panel_is_editing
 
 
 register()
