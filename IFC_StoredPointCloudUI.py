@@ -20,7 +20,7 @@ def update_point_clouds_list():
     ifc_document_references=get_ifc_document_references()
     for document_reference in ifc_document_references:
         list_item = bpy.context.scene.ifc_point_cloud_list.add()
-        list_item.name = document_reference.Description
+        list_item.name = document_reference.Identification
         list_item.ifc_definition_id=document_reference.id()
         related_objects = ifc_document_reference_get_related_objects(document_reference)
         if len(related_objects) > 0:
@@ -61,10 +61,31 @@ def assign_pcv_properties(bl_object, filepath):
         print("ERROR: Not able to assing Point Cloud Visualizer properties to blender object.\n")
 
 
+def create_ifc_document_information(model):
+    import ifcopenshell
+    
+    document = ifcopenshell.api.document.add_information(model)
+    ifcopenshell.api.document.edit_information(model,
+        document,
+        attributes={"Name": "BBIM_Point_Clouds"}
+        )
+    return document
+
+
+def create_ifc_document_reference(model, document, filepath):
+    import ifcopenshell
+    
+    reference = ifcopenshell.api.document.add_reference(model, information=document)
+    ifcopenshell.api.document.edit_reference(model,
+        reference=reference, 
+        attributes={"Identification": "First pc", "Location": filepath})
+    return reference
+
+
 def create_related_ifc_annotation(ifc_ref):
     
     bpy.ops.object.empty_add(type='PLAIN_AXES')
-    bpy.context.active_object.name = ifc_ref.Description
+    bpy.context.active_object.name = ifc_ref.Identification
     bpy.ops.bim.assign_class(ifc_class="IfcAnnotation")
     bpy.ops.bim.assign_container()
     
@@ -84,6 +105,20 @@ def show_point_cloud(bl_object):
         pcv.mechanist.PCVMechanist.tag_redraw()
 
 
+def import_point_cloud(context, filepath, create_proxy):
+    import bonsai
+    
+    model = bonsai.tool.Ifc.get()
+    document = create_ifc_document_information(model)
+    reference = create_ifc_document_reference(model, document, filepath)
+    
+    if create_proxy:
+        create_related_ifc_annotation(reference)
+        
+    bonsai.bim.module.document.data.refresh()
+    bonsai.tool.Document.import_project_documents()
+    
+    
 def hide_point_cloud(bl_object):
     return
 
@@ -135,11 +170,13 @@ class AddPC(bpy.types.Operator, ImportHelper):
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
+    
+    create_proxy: bpy.props.BoolProperty(name="Create related annotation placeholder", default=True)
 
     def execute(self, context):
-        
+        import_point_cloud(context, self.filepath, self.create_proxy)
         return {'FINISHED'}
-
+    
 
 class TogglePCEditing(bpy.types.Operator):
     """Add Point Cloud reference to current Ifc"""
