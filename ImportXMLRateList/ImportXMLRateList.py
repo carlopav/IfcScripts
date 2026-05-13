@@ -549,6 +549,11 @@ class ImportXMLRateList(Operator, ImportHelper):
             item.is_parent = rate["is_parent"]
             item.parents = rate["parents"]
             item.attributes = json.dumps(rate)
+            if item.is_parent:
+                item.is_expanded = False
+
+        if len(context.scene.xml_rate_list) > 0:
+            context.scene.xml_rate_list_active_index = 0
 
         return {"FINISHED"}
 
@@ -754,6 +759,8 @@ class CUSTOM_OT_toggle(Operator):
     def execute(self, context):
         item = context.scene.xml_rate_list[self.index]
         item.is_expanded = not item.is_expanded
+        # keep the list order while expanding/collapsing by updating the active index to the toggled item
+        context.scene.xml_rate_list_active_index = self.index
         return {"FINISHED"}
 
 
