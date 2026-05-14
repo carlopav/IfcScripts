@@ -565,8 +565,6 @@ def create_cost_item(file, selected_rate, create_new_item=True):
     active_ui_cost_item = bpy.context.scene.BIMCostProperties.active_cost_item
     active_ifc_cost_item = file.by_id(active_ui_cost_item.ifc_definition_id)
 
-    # TODO: Remove previous cost values or edit them while updating
-
     if create_new_item:
         if active_ifc_cost_item in ifcopenshell.util.cost.get_root_cost_items(
             file.by_id(bpy.context.scene.BIMCostProperties.active_cost_schedule_id)
@@ -584,6 +582,10 @@ def create_cost_item(file, selected_rate, create_new_item=True):
             )
     else:
         cost_item = active_ifc_cost_item
+        # Remove previous cost values before updating
+        if cost_item.CostValues:
+            for cost_value in list(cost_item.CostValues):
+                ifcopenshell.api.cost.remove_cost_value(file, parent=cost_item, cost_value=cost_value)
 
     rate_attrib = json.loads(selected_rate.attributes)
     cost_item.Identification = rate_attrib["id"]
@@ -622,11 +624,18 @@ class UpdateActiveCostItem(bpy.types.Operator):
 
     @classmethod
     def poll(self, context):
-        return False
+        try:
+            if (
+                len(getattr(bpy.context.scene, "xml_rate_list", [])) > 0
+                and bpy.context.scene.BIMCostProperties.active_cost_item != None
+            ):
+                return True
+            else:
+                return False
+        except:
+            return False
 
-    def execute(
-        self, context
-    ):  # TODO: Remove previous cost values or edit them while updating
+    def execute(self, context):
         from bonsai import tool
 
         xml_rate_list_selected_item = bpy.context.scene.xml_rate_list[
