@@ -721,6 +721,35 @@ class XmlRateCustomUIList(bpy.types.UIList):
                             self.bitflag_filter_item
                         )
             flt_flags = search_filtered_flags
+            
+            # Apply expand/collapse logic on top of search filter
+            final_flags = []
+            hide_next = False
+            hide_level = 10
+            for i, item in enumerate(items):
+                show_item = (flt_flags[i] & self.bitflag_filter_item) != 0
+                
+                if show_item:
+                    if hide_next:
+                        if item.level <= hide_level:
+                            show_item = True
+                            if item.is_expanded:
+                                hide_next = False
+                            else:
+                                hide_next = True
+                                hide_level = item.level
+                        else:
+                            show_item = False
+                    else:
+                        show_item = True
+                        if item.is_expanded:
+                            hide_next = False
+                        else:
+                            hide_next = True
+                            hide_level = item.level
+                
+                final_flags.append(self.bitflag_filter_item if show_item else 0)
+            flt_flags = final_flags
 
         else:
             hide_next = False
