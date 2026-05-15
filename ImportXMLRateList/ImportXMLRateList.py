@@ -60,7 +60,8 @@ class XMLParser:
 
         it = ET.iterparse(StringIO(data))
         for _, el in it:
-            _, _, el.tag = el.tag.rpartition("}")
+            if isinstance(el.tag, str) and "}" in el.tag:
+                el.tag = el.tag.rpartition("}")[-1]
         return it.root
 
     def get_root(self, data):
@@ -68,33 +69,21 @@ class XMLParser:
         from io import StringIO
 
         tree = ET.parse(StringIO(data))
-        return tree.root
+        return tree.getroot()
 
     def clean_string(self, text):
         # sistema_cose (da Leeno)
-        text.replace("\t", " ").replace("Ã¨", "è").replace("", "").replace(
-            "Â°", "°"
-        ).replace("Ã", "à").replace(" $", "").replace("Ó", "à").replace(
-            "Þ", "é"
-        ).replace(
-            "&#x13;", ""
-        ).replace(
-            "&#xD;&#xA;", ""
-        ).replace(
-            "&#xA;", ""
-        ).replace(
-            "&apos;", "'"
-        ).replace(
-            "&#x3;&#x1;", ""
-        ).replace(
-            "\n \n", "\n"
-        )
-        while "  " in desc:
+        text = text.replace("\t", " ").replace("Ã¨", "è").replace("", "")
+        text = text.replace("Â°", "°").replace("Ã", "à").replace(" $", "")
+        text = text.replace("Ó", "à").replace("Þ", "é").replace("&#x13;", "")
+        text = text.replace("&#xD;&#xA;", "").replace("&#xA;", "")
+        text = text.replace("&apos;", "'").replace("&#x3;&#x1;", "")
+        text = text.replace("\n \n", "\n")
+        while "  " in text:
             text = text.replace("  ", " ")
-        while "\n\n" in desc:
+        while "\n\n" in text:
             text = text.replace("\n\n", "\n")
-        text = text.strip()
-        return text
+        return text.strip()
 
 
 class ParserXmlVeneto(XMLParser):
@@ -223,191 +212,21 @@ class ParserXmlSardegna(XMLParser):
 
 
 class ParserXmlSix(XMLParser):
-    @staticmethod
-    def get_description_in_language(items, language):
-        # code from Leeno to be adapted
-        lingue = {}
-        lingua = None
-        languages_dict = {
-            "it": "Italiano",
-            "de": "Deutsch",
-            "en": "English",
-            "fr": "Français",
-            "es": "Español",
-        }
-        try:
-            for desc in descrizioni:
-                lingua = desc.attrib["lingua"]
-                lExt = languages_dict.get(lingua, lingua)
-                lingue[lExt] = lingua
-                defaultTitle = desc.attrib["breve"]
-            try:
-                anno = defaultTitle.split(" ")[1]
-                for quota in quotazioni:
-                    lqtId = quota.attrib["lqtId"]
-                    if lqtId == anno:
-                        listaQuotazioneId = quota.attrib["listaQuotazioneId"]
-                        break
-            except:
-                pass
-        except KeyError:
-            pass
+    """Parser per formato XML SIX."""
 
-        if len(lingue) > 1:
-            lingue["Tutte"] = "tutte"
-            lingue["Annulla"] = "annulla"
-            lingua = Dialogs.MultiButton(
-                Icon="Icons-Big/question.png",
-                Title="Scelta lingue",
-                Text="Il file fornito è un prezzario multilinguale\n\nSelezionare la lingua da importare\noppure 'Tutte' per ottenere un prezzario multilinguale",
-                Buttons=lingue,
-            )
-            # se si chiude la finestra il dialogo ritorna 'None'
-            # lo consideriamo come un 'Annulla'
-            if lingua is None:
-                lingua = "annulla"
-            if lingua == "tutte":
-                lingua = None
-        else:
-            lingua = None
-
-        if lingua == "annulla":
-            return None
-
-        # da qui, se lingua == None importa tutte le lingue presenti
-        # altrimenti solo quella specificata
-
-        # estrae il nome
-        # se richiesta un lingua specifica, estrae quella
-        # altrimenti le estrea tutte e le concatena una dopo l'altra
-        nome = ""
-        if lingua is None:
-            nome = descrizioni[0].attrib["breve"]
-            for desc in range(1, len(descrizioni)):
-                nome = nome + "\n" + descrizioni[desc].attrib["breve"]
-        else:
-            for desc in descrizioni:
-                if desc.attrib["lingua"] == lingua:
-                    nome = desc.attrib["breve"]
-                    break
-
-    @staticmethod
-    def get_soa_categories(root):
-        # se ci sono le categorie SOA, estrae prima quelle
-        # in versione a una o più lingue a seconda del file
-        # e di come viene richiesta la cosa
-        # attualmente non servono, ma non si sa mai...
-        categorieSOA = {}
-        catList = root.findall("categoriaSOA")
-        for cat in catList:
-            attr = cat.attrib
-            try:
-                soaId = attr["soaId"]
-                soaCategoria = attr["soaCategoria"]
-                descs = cat.findall("soaDescrizione")
-                text = ""
-                for desc in descs:
-                    descAttr = desc.attrib
-                    try:
-                        descLingua = descAttr["lingua"]
-                    except KeyError:
-                        descLingua = None
-                    if lingua is None or descLingua is None or lingua == descLingua:
-                        text = text + descAttr["breve"] + "\n"
-                if text != "":
-                    text = text[: -len("\n")]
-
-                categorieSOA[soaCategoria] = {"soaId": soaId, "descrizione": text}
-            except KeyError:
-                pass
-
-        return categorieSOA
-
-    @staticmethod
-    def get_units(prezzario):
-        # legge le unità di misura
-        # siccome ci interessano soli i simboli e non il resto
-        # non serve il processing per le lingue
-        units = {}
-        umList = prezzario.findall("unitaDiMisura")
-        for um in umList:
-            attr = um.attrib
-            try:
-                if "simbolo" in attr:
-                    sym = attr["simbolo"]
-                else:
-                    sym = attr["udmId"]
-                umId = attr["unitaDiMisuraId"]
-                units[umId] = sym
-            except KeyError:
-                pass
-
-        return units
-
-    @staticmethod
-    def get_unit(units, product):
-        try:
-            unit = units[product.attrib["unitaDiMisuraId"]]
-            return unit
-        except:
-            return ""
-
-    @staticmethod
-    def get_value(product):
-        # il prezzo
-        # alcune voci non hanno il campo del prezzo essendo
-        # voci principali composte da sottovoci
-        # le importo comunque, lasciando il valore nullo
-        prezzo = 0.0
-        try:
-            for el in product.findall("prdQuotazione"):
-                if el.attrib["listaQuotazioneId"] == listaQuotazioneId:
-                    prezzo = float(el.attrib["valore"])
-        except:
-            try:
-                prezzo = float(product.find("prdQuotazione").attrib["valore"])
-            except Exception:
-                prezzo = 0.0
-        if prezzo == 0:
-            prezzo = 0.0
-
-        return prezzo
-
-    @staticmethod
-    def get_value_component(product, cost_value, component_type):
-        if not component_type in (
-            "incidenzaManodopera",
-            "incidenzaMateriali",
-            "incidenzaAttrezzatura",
-        ):
-            return 0.0
-        component_ratio = product.find(component_type)
-        return float(getattr(component_ratio, "text", 0.0)) * cost_value / 100
-
-    @staticmethod
-    def get_level_from_prdId(product):
-        return len(product.attrib["prdId"].split(".")) - 1
-
-    @staticmethod
-    def is_parent(product):
-        # TODO: da migliorare: la voce può essere un gruppo e avere
-        #       una quotazione usata impropriamente per definire altre cose
-        return not len(product.findall("prdQuotazione")) > 0
-
-    @staticmethod
-    def get_parents(product):
-        results = [item for item in self.xml_rate_list if item["id"] == "NYC"]
-
-        return parents_ids
+    def __init__(self, language=None):
+        super().__init__()
+        self.language = language
+        self.default_list_id = None
 
     def parse_items(self, xml_content):
-        """
-        parser for six xml structure. the tree generation is based
-        on the prdId structure
-        """
         xml_content = self.clean_xml_content(xml_content)
         root = self.get_stripped_xml_namespaces_root(xml_content)
         prezzario = root.find("prezzario")
+        if prezzario is None:
+            return
+
+        self.default_list_id = self._get_default_quotazione_id(prezzario)
         units = self.get_units(prezzario)
         products = prezzario.findall("prodotto")
 
@@ -415,54 +234,103 @@ class ParserXmlSix(XMLParser):
         parents_prdId_indexes = {}
 
         for product in products:
-
             level = self.get_level_from_prdId(product)
-
-            is_parent = True if level == 0 else self.is_parent(product)
+            is_parent = level == 0 or self.is_parent(product)
 
             if is_parent:
-                # add item to parent structure
                 parents_prdId_indexes[product.attrib["prdId"]] = str(index)
 
             parents = ""
-
             parts = product.attrib["prdId"].split(".")
             parents_prdId = [".".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
-
             for prdId in parents_prdId:
-                if prdId in parents_prdId_indexes.keys():
+                if prdId in parents_prdId_indexes:
                     parents += parents_prdId_indexes[prdId] + ","
-
             parents = parents.strip(",")
 
             desc = product.find("prdDescrizione")
-            name = desc.attrib["breve"]
-            description = desc.attrib["estesa"] if "estesa" in desc.keys() else ""
+            name = self.clean_string(desc.attrib.get("breve", "")) if desc is not None else ""
+            description = self.clean_string(desc.attrib.get("estesa", "")) if desc is not None else ""
             cost_value = self.get_value(product)
-            self.xml_rate_list.append(
-                {
-                    "index": index,
-                    "level": level,
-                    "is_parent": is_parent,
-                    "parents": parents,
-                    "id": product.attrib["prdId"],
-                    "name": name,
-                    "desc": description,
-                    "unit": self.get_unit(units, product),
-                    "value": cost_value,
-                    "labor": self.get_value_component(
-                        product, cost_value, "incidenzaManodopera"
-                    ),
-                    "equipment": self.get_value_component(
-                        product, cost_value, "incidenzaAttrezzatura"
-                    ),
-                    "materials": self.get_value_component(
-                        product, cost_value, "incidenzaMateriali"
-                    ),
-                    "safety": self.get_value_component(product, cost_value, "safety"),
-                }
-            )
+
+            self.xml_rate_list.append({
+                "index": index,
+                "level": level,
+                "is_parent": is_parent,
+                "parents": parents,
+                "id": product.attrib.get("prdId", ""),
+                "name": name,
+                "desc": description,
+                "unit": self.get_unit(units, product),
+                "value": cost_value,
+                "labor": self.get_value_component(product, cost_value, "incidenzaManodopera"),
+                "equipment": self.get_value_component(product, cost_value, "incidenzaAttrezzatura"),
+                "materials": self.get_value_component(product, cost_value, "incidenzaMateriali"),
+                "safety": self.get_value_component(product, cost_value, "safety"),
+            })
             index += 1
+
+    def _get_default_quotazione_id(self, prezzario):
+        lista = prezzario.find("listaQuotazione")
+        if lista is not None:
+            return lista.attrib.get("listaQuotazioneId")
+        return None
+
+    @staticmethod
+    def get_units(prezzario):
+        units = {}
+        umList = prezzario.findall("unitaDiMisura")
+        for um in umList:
+            attr = um.attrib
+            try:
+                sym = attr.get("simbolo", attr.get("udmId", ""))
+                units[attr["unitaDiMisuraId"]] = sym
+            except KeyError:
+                pass
+        return units
+
+    @staticmethod
+    def get_unit(units, product):
+        try:
+            return units.get(product.attrib.get("unitaDiMisuraId", ""), "")
+        except Exception:
+            return ""
+
+    def get_value(self, product):
+        prezzo = 0.0
+        quotazioni = product.findall("prdQuotazione")
+        if not quotazioni:
+            return 0.0
+
+        for el in quotazioni:
+            if self.default_list_id and el.attrib.get("listaQuotazioneId") == self.default_list_id:
+                try:
+                    return float(el.attrib.get("valore", 0.0))
+                except ValueError:
+                    return 0.0
+
+        try:
+            return float(quotazioni[0].attrib.get("valore", 0.0))
+        except ValueError:
+            return 0.0
+
+    @staticmethod
+    def get_value_component(product, cost_value, component_type):
+        if component_type not in ("incidenzaManodopera", "incidenzaMateriali", "incidenzaAttrezzatura", "safety"):
+            return 0.0
+        component_ratio = product.find(component_type)
+        try:
+            return float(getattr(component_ratio, "text", 0.0)) * cost_value / 100
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def get_level_from_prdId(product):
+        return len(product.attrib.get("prdId", "").split(".")) - 1
+
+    @staticmethod
+    def is_parent(product):
+        return len(product.findall("prdQuotazione")) == 0
 
 
 class ImportXMLRateList(Operator, ImportHelper):
