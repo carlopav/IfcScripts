@@ -542,13 +542,12 @@ class UpdateActiveCostItem(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         try:
-            if (
+            props = bpy.context.scene.BIMCostProperties
+            return (
                 len(getattr(bpy.context.scene, "xml_rate_list", [])) > 0
-                and bpy.context.scene.BIMCostProperties.active_cost_item != None
-            ):
-                return True
-            else:
-                return False
+                and props.active_cost_schedule_id != 0
+                and props.active_cost_item is not None
+            )
         except:
             return False
 
@@ -575,13 +574,12 @@ class ImportRateToActiveCostSchedule(bpy.types.Operator):
     @classmethod
     def poll(self, context):
         try:
-            if (
+            props = bpy.context.scene.BIMCostProperties
+            return (
                 len(getattr(bpy.context.scene, "xml_rate_list", [])) > 0
-                and bpy.context.scene.BIMCostProperties.active_cost_item != None
-            ):
-                return True
-            else:
-                return False
+                and props.active_cost_schedule_id != 0
+                and props.active_cost_item is not None
+            )
         except:
             return False
 
