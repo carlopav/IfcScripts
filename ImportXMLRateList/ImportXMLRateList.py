@@ -33,6 +33,8 @@ class XMLParser:
 
     def __init__(self):
         self.xml_rate_list = []
+        self.title = ""
+        self.year = ""
 
     @staticmethod
     def get_xml_content(filename):
@@ -226,27 +228,32 @@ class ParserXmlSix(XMLParser):
         if prezzario is None:
             return
 
+        prz_desc = prezzario.find("przDescrizione")
+        if prz_desc is not None:
+            self.title = self.clean_string(prz_desc.attrib.get("breve", ""))
+
         self.default_list_id = self._get_default_quotazione_id(prezzario)
         units = self.get_units(prezzario)
         products = prezzario.findall("prodotto")
 
+        # sort by prdId ensures parents are always processed before their children
+        products = sorted(products, key=lambda p: p.attrib.get("prdId", ""))
+
         index = 0
-        parents_prdId_indexes = {}
+        prdId_to_index = {}
 
         for product in products:
+            prdId = product.attrib.get("prdId", "")
             level = self.get_level_from_prdId(product)
-            is_parent = level == 0 or self.is_parent(product)
+            is_parent = self.is_parent(product)
 
             if is_parent:
-                parents_prdId_indexes[product.attrib["prdId"]] = str(index)
+                prdId_to_index[prdId] = str(index)
 
-            parents = ""
-            parts = product.attrib["prdId"].split(".")
-            parents_prdId = [".".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
-            for prdId in parents_prdId:
-                if prdId in parents_prdId_indexes:
-                    parents += parents_prdId_indexes[prdId] + ","
-            parents = parents.strip(",")
+            # build parents as comma-separated ancestor indices from root to immediate parent
+            parts = prdId.split(".")
+            ancestors = [".".join(parts[:i]) for i in range(1, len(parts))]
+            parents = ",".join(prdId_to_index[p] for p in ancestors if p in prdId_to_index)
 
             desc = product.find("prdDescrizione")
             name = self.clean_string(desc.attrib.get("breve", "")) if desc is not None else ""
@@ -258,7 +265,7 @@ class ParserXmlSix(XMLParser):
                 "level": level,
                 "is_parent": is_parent,
                 "parents": parents,
-                "id": product.attrib.get("prdId", ""),
+                "id": prdId,
                 "name": name,
                 "desc": description,
                 "unit": self.get_unit(units, product),
@@ -266,7 +273,7 @@ class ParserXmlSix(XMLParser):
                 "labor": self.get_value_component(product, cost_value, "incidenzaManodopera"),
                 "equipment": self.get_value_component(product, cost_value, "incidenzaAttrezzatura"),
                 "materials": self.get_value_component(product, cost_value, "incidenzaMateriali"),
-                "safety": self.get_value_component(product, cost_value, "safety"),
+                "safety": self._get_safety(product, cost_value),
             })
             index += 1
 
@@ -275,6 +282,13 @@ class ParserXmlSix(XMLParser):
         if lista is not None:
             return lista.attrib.get("listaQuotazioneId")
         return None
+
+    @staticmethod
+    def _get_safety(product, cost_value):
+        try:
+            return float(product.attrib.get("onereSicurezza", 0)) * cost_value / 100
+        except (ValueError, TypeError):
+            return 0.0
 
     @staticmethod
     def get_units(prezzario):
@@ -316,7 +330,7 @@ class ParserXmlSix(XMLParser):
 
     @staticmethod
     def get_value_component(product, cost_value, component_type):
-        if component_type not in ("incidenzaManodopera", "incidenzaMateriali", "incidenzaAttrezzatura", "safety"):
+        if component_type not in ("incidenzaManodopera", "incidenzaMateriali", "incidenzaAttrezzatura"):
             return 0.0
         component_ratio = product.find(component_type)
         try:
@@ -330,7 +344,10 @@ class ParserXmlSix(XMLParser):
 
     @staticmethod
     def is_parent(product):
-        return len(product.findall("prdQuotazione")) == 0
+        quotazioni = product.findall("prdQuotazione")
+        if not quotazioni:
+            return True
+        return all(float(q.attrib.get("valore", 0)) == 0.0 for q in quotazioni)
 
 
 class ImportXMLRateList(Operator, ImportHelper):
@@ -399,20 +416,36 @@ class ImportXMLRateList(Operator, ImportHelper):
         return None
 
     def execute(self, context):
+        import os, re
         xml_content = XMLParser.get_xml_content(self.filepath)
-        parser = self.findXmlParser(xml_content)()
-        if parser is None:
+        parser_class = self.findXmlParser(xml_content)
+        if parser_class is None:
             self.report(
                 {"ERROR"}, "Cannot automatically find a parser for selected file"
             )
             return {"CANCELLED"}
-        # parser = available_parsers[self.chosen_parser]
+        parser = parser_class()
         parser.parse_items(xml_content)
+
+        filename = os.path.basename(self.filepath)
+        name = filename[:-4]
+        if not parser.year:
+            match = re.search(r'\b(\d{4})\b', name)
+            parser.year = match.group(1) if match else ""
+        if not parser.title:
+            parts = name.split("-")
+            parser.title = f"{parts[0]} {parser.year}".strip() if parts else name
+
+        context.scene.xml_rate_title = parser.title
+        context.scene.xml_rate_year = parser.year
 
         context.scene.xml_rate_list.clear()
         for rate in parser.xml_rate_list:
             item = context.scene.xml_rate_list.add()
-            item.name = rate["id"] + " - " + rate["name"]
+            if rate["is_parent"] and rate["name"].startswith("Group "):
+                item.name = rate["id"]
+            else:
+                item.name = rate["id"] + " - " + rate["name"]
             item.level = rate["level"]
             item.is_parent = rate["is_parent"]
             item.parents = rate["parents"]
@@ -592,11 +625,8 @@ class XmlRateCustomUIList(bpy.types.UIList):
             search_filtered_flags = flt_flags[:]
             for i, item in enumerate(items):
                 if flt_flags[i] & self.bitflag_filter_item:
-                    current_parents_idx = item.parents.split(",")
-                    for parent_idx in current_parents_idx:
-                        search_filtered_flags[int(parent_idx)] = (
-                            self.bitflag_filter_item
-                        )
+                    for parent_idx in [int(p) for p in item.parents.split(",") if p.strip()]:
+                        search_filtered_flags[parent_idx] = self.bitflag_filter_item
             flt_flags = search_filtered_flags
             
             # Apply expand/collapse logic on top of search filter
@@ -751,7 +781,10 @@ class RateListPanel(bpy.types.Panel):
         layout = self.layout
         row = layout.row()
         row.operator(ImportXMLRateList.bl_idname, text="Import Rate List")
-        layout.label(text="XML Rate List: {}".format("Not yet implemented"))
+        if context.scene.xml_rate_title:
+            layout.label(text=f"Prezzario: {context.scene.xml_rate_title} ({context.scene.xml_rate_year})")
+        else:
+            layout.label(text="XML Rate List: Not imported yet")
         row = layout.row()
         row.operator(CUSTOM_OT_collapse_to_level_0.bl_idname, text="Collapse")
         row.operator(CUSTOM_OT_collapse_to_level_1.bl_idname, text="To Level 1")
@@ -819,12 +852,16 @@ def register():
     bpy.types.Scene.xml_rate_list_active_index = bpy.props.IntProperty(
         update=RateListPanel.rate_list_selection_callback
     )
+    bpy.types.Scene.xml_rate_title = bpy.props.StringProperty(name="Rate Title", default="")
+    bpy.types.Scene.xml_rate_year = bpy.props.StringProperty(name="Rate Year", default="")
 
 
 def unregister():
     class_unregister()
     del bpy.types.Scene.xml_rate_list
     del bpy.types.Scene.xml_rate_list_active_index
+    del bpy.types.Scene.xml_rate_title
+    del bpy.types.Scene.xml_rate_year
 
 
 register()
