@@ -459,7 +459,19 @@ class ImportXMLRateList(Operator, ImportHelper):
         return {"FINISHED"}
 
 
-def create_cost_item(file, selected_rate, create_new_item=True):
+def get_parent_desc(selected_rate):
+    rate_attrib = json.loads(selected_rate.attributes)
+    parent_indices = [p for p in rate_attrib.get("parents", "").split(",") if p.strip()]
+    if not parent_indices:
+        return ""
+    parent_idx = int(parent_indices[-1])
+    items = bpy.context.scene.xml_rate_list
+    if parent_idx < len(items):
+        return json.loads(items[parent_idx].attributes).get("desc", "")
+    return ""
+
+
+def create_cost_item(file, selected_rate, create_new_item=True, combine_desc=False):
     import ifcopenshell
     import bonsai
 
@@ -491,7 +503,11 @@ def create_cost_item(file, selected_rate, create_new_item=True):
     rate_attrib = json.loads(selected_rate.attributes)
     cost_item.Identification = rate_attrib["id"]
     cost_item.Name = rate_attrib["name"]
-    cost_item.Description = rate_attrib["desc"]
+    if combine_desc:
+        parent_desc = get_parent_desc(selected_rate)
+        cost_item.Description = (parent_desc + "\n" + rate_attrib["desc"]).strip() if parent_desc else rate_attrib["desc"]
+    else:
+        cost_item.Description = rate_attrib["desc"]
     cost_value = ifcopenshell.api.cost.add_cost_value(file, parent=cost_item)
 
     ifcopenshell.api.cost.edit_cost_value(
@@ -544,7 +560,8 @@ class UpdateActiveCostItem(bpy.types.Operator):
         ]
         file = tool.Ifc.get()
         create_cost_item(
-            file, selected_rate=xml_rate_list_selected_item, create_new_item=False
+            file, selected_rate=xml_rate_list_selected_item, create_new_item=False,
+            combine_desc=context.scene.xml_rate_combine_desc,
         )
         return {"FINISHED"}
 
@@ -575,7 +592,10 @@ class ImportRateToActiveCostSchedule(bpy.types.Operator):
             bpy.context.scene.xml_rate_list_active_index
         ]
         file = tool.Ifc.get()
-        create_cost_item(file, selected_rate=selected_rate, create_new_item=True)
+        create_cost_item(
+            file, selected_rate=selected_rate, create_new_item=True,
+            combine_desc=context.scene.xml_rate_combine_desc,
+        )
         return {"FINISHED"}
 
 
@@ -805,6 +825,8 @@ class RateListPanel(bpy.types.Panel):
             row.label(text=rate_info[0])
             btn_row = row.row(align=True)
             btn_row.alignment = "RIGHT"
+            btn_row.prop(context.scene, "xml_rate_combine_desc", text="", icon="OUTLINER", toggle=True)
+            btn_row.separator(factor=2.0)
             btn_row.operator(
                 ImportRateToActiveCostSchedule.bl_idname, text="", icon="ADD"
             )
@@ -854,6 +876,11 @@ def register():
     )
     bpy.types.Scene.xml_rate_title = bpy.props.StringProperty(name="Rate Title", default="")
     bpy.types.Scene.xml_rate_year = bpy.props.StringProperty(name="Rate Year", default="")
+    bpy.types.Scene.xml_rate_combine_desc = bpy.props.BoolProperty(
+        name="Combine Description with Parent",
+        description="Prepend the parent item description to the selected item description",
+        default=False,
+    )
 
 
 def unregister():
@@ -862,6 +889,7 @@ def unregister():
     del bpy.types.Scene.xml_rate_list_active_index
     del bpy.types.Scene.xml_rate_title
     del bpy.types.Scene.xml_rate_year
+    del bpy.types.Scene.xml_rate_combine_desc
 
 
 register()
