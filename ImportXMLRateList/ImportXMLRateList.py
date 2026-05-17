@@ -963,6 +963,142 @@ class ParserXmlSix(PriceListParser):
         return all(float(q.attrib.get("valore", 0)) == 0.0 for q in quotazioni)
 
 
+# ---------------------------------------------------------------------------
+# Recent files support
+# ---------------------------------------------------------------------------
+
+_recent_cache = []  # module-level: prevents GC of enum item strings
+_importing = False  # guard against recursive import triggered by setting xml_rate_recent_path
+
+
+def _recent_file_path():
+    import os
+    return os.path.join(bpy.utils.user_resource('CONFIG'), 'ImportXMLRateList_recent.json')
+
+
+def _load_recent():
+    try:
+        with open(_recent_file_path(), 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _save_recent(path, title, year):
+    entries = _load_recent()
+    entries = [e for e in entries if e['path'] != path]
+    entries.insert(0, {'path': path, 'title': title, 'year': year})
+    entries = entries[:10]
+    try:
+        with open(_recent_file_path(), 'w', encoding='utf-8') as f:
+            json.dump(entries, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _refresh_recent_cache():
+    global _recent_cache
+    entries = _load_recent()
+    if entries:
+        _recent_cache = [
+            (
+                e['path'],
+                f"{e['title']} ({e['year']})" if e.get('year') else e['title'],
+                e['path'],
+            )
+            for e in entries
+        ]
+    else:
+        _recent_cache = [('__NONE__', '— nessun prezzario recente —', '')]
+
+
+def _get_recent_items(self, context):
+    return _recent_cache or [('__NONE__', '— nessun prezzario recente —', '')]
+
+
+def _on_recent_select(self, context):
+    global _importing
+    if _importing:
+        return
+    path = self.xml_rate_recent_path
+    if path and path != '__NONE__':
+        _do_import(path, context)
+
+
+# ---------------------------------------------------------------------------
+# Core parser detection and import logic
+# ---------------------------------------------------------------------------
+
+def _find_xml_parser(xml_content):
+    """From Leeno (thanks Giuserpe): pre-scans the XML to pick the right parser."""
+    parsers = {
+        "PweDatiGenerali": ParserXpwe,
+        'xmlns="six.xsd"': ParserXmlSix,
+        'autore="Regione Toscana"': ParserXmlToscana,
+        'autore="Regione Calabria"': ParserXmlToscana,
+        'autore="Regione Campania"': ParserXmlToscana,
+        'autore="Regione Sardegna"': ParserXmlToscana,
+        'autore="Regione Liguria"': ParserXmlLiguria,
+        "rks=": ParserXmlVeneto,
+        "<pdf>Prezzario_Regione_Basilicata": ParserXmlBasilicata,
+        "<autore>Regione Lombardia": ParserXmlLombardia,
+        "<autore>LOM": ParserXmlLombardia,
+    }
+    for pattern, parser_class in parsers.items():
+        if pattern in xml_content:
+            return parser_class
+    return None
+
+
+def _do_import(filepath, context, report=None):
+    import os, re
+    xml_content = PriceListParser.get_xml_content(filepath)
+    parser_class = _find_xml_parser(xml_content)
+    if parser_class is None:
+        if report:
+            report({'ERROR'}, "Cannot automatically find a parser for selected file")
+        return False
+
+    parser = parser_class()
+    parser.parse_items(xml_content)
+
+    filename = os.path.basename(filepath)
+    name = os.path.splitext(filename)[0]
+    match = re.search(r'\b(\d{4})\b', name)
+    parser.year = match.group(1) if match else ""
+    parser.title = name
+
+    context.scene.xml_rate_title = parser.title
+    context.scene.xml_rate_year = parser.year
+
+    context.scene.xml_rate_list.clear()
+    for rate in parser.xml_rate_list:
+        item = context.scene.xml_rate_list.add()
+        if rate["is_parent"] and rate["name"].startswith("Group "):
+            item.name = rate["id"]
+        else:
+            item.name = rate["id"] + " - " + rate["name"]
+        item.level = rate["level"]
+        item.is_parent = rate["is_parent"]
+        item.parents = rate["parents"]
+        item.attributes = json.dumps(rate)
+        if item.is_parent:
+            item.is_expanded = False
+
+    if len(context.scene.xml_rate_list) > 0:
+        context.scene.xml_rate_list_active_index = 0
+
+    _save_recent(filepath, parser.title, parser.year)
+    _refresh_recent_cache()
+    global _importing
+    _importing = True
+    try:
+        context.scene.xml_rate_recent_path = filepath
+    finally:
+        _importing = False
+    return True
+
+
 class ImportXMLRateList(Operator, ImportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
 
@@ -996,80 +1132,9 @@ class ImportXMLRateList(Operator, ImportHelper):
         box.label(text="Options:")
         box.label(text="")
 
-    def findXmlParser(self, xmlText):
-        """
-        From Leeno, thanks to Giuserpe!
-        fa un pre-esame del contenuto xml della stringa fornita
-        per determinare se si tratta di un tipo noto
-        (nel qual caso fornisce un parser adatto) oppure no
-        (nel qual caso avvisa di inviare il file allo staff)
-        """
-
-        parsers = {
-            "PweDatiGenerali": ParserXpwe,
-            'xmlns="six.xsd"': ParserXmlSix,
-            'autore="Regione Toscana"': ParserXmlToscana,
-            'autore="Regione Calabria"': ParserXmlToscana,
-            'autore="Regione Campania"': ParserXmlToscana,
-            'autore="Regione Sardegna"': ParserXmlToscana,
-            'autore="Regione Liguria"': ParserXmlLiguria,
-            "rks=": ParserXmlVeneto,
-            "<pdf>Prezzario_Regione_Basilicata": ParserXmlBasilicata,
-            "<autore>Regione Lombardia": ParserXmlLombardia,
-            "<autore>LOM": ParserXmlLombardia,
-        }
-
-        # controlla se il file è di tipo conosciuto...
-        for pattern, xmlParser in parsers.items():
-            if pattern in xmlText:
-                # si, ritorna il parser corrispondente
-                return xmlParser
-
-        # non trovato... ritorna None
-        return None
-
     def execute(self, context):
-        import os, re
-        xml_content = PriceListParser.get_xml_content(self.filepath)
-        parser_class = self.findXmlParser(xml_content)
-        if parser_class is None:
-            self.report(
-                {"ERROR"}, "Cannot automatically find a parser for selected file"
-            )
-            return {"CANCELLED"}
-        parser = parser_class()
-        parser.parse_items(xml_content)
-
-        filename = os.path.basename(self.filepath)
-        name = filename[:-4]
-        if not parser.year:
-            match = re.search(r'\b(\d{4})\b', name)
-            parser.year = match.group(1) if match else ""
-        if not parser.title:
-            parts = name.split("-")
-            parser.title = f"{parts[0]} {parser.year}".strip() if parts else name
-
-        context.scene.xml_rate_title = parser.title
-        context.scene.xml_rate_year = parser.year
-
-        context.scene.xml_rate_list.clear()
-        for rate in parser.xml_rate_list:
-            item = context.scene.xml_rate_list.add()
-            if rate["is_parent"] and rate["name"].startswith("Group "):
-                item.name = rate["id"]
-            else:
-                item.name = rate["id"] + " - " + rate["name"]
-            item.level = rate["level"]
-            item.is_parent = rate["is_parent"]
-            item.parents = rate["parents"]
-            item.attributes = json.dumps(rate)
-            if item.is_parent:
-                item.is_expanded = False
-
-        if len(context.scene.xml_rate_list) > 0:
-            context.scene.xml_rate_list_active_index = 0
-
-        return {"FINISHED"}
+        success = _do_import(self.filepath, context, self.report)
+        return {"FINISHED"} if success else {"CANCELLED"}
 
 
 def get_parent_desc(selected_rate):
@@ -1410,12 +1475,9 @@ class RateListPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        row = layout.row()
-        row.operator(ImportXMLRateList.bl_idname, text="Import Rate List")
-        if context.scene.xml_rate_title:
-            layout.label(text=f"Prezzario: {context.scene.xml_rate_title} ({context.scene.xml_rate_year})")
-        else:
-            layout.label(text="XML Rate List: Not imported yet")
+        row = layout.row(align=True)
+        row.prop(context.scene, "xml_rate_recent_path", text="")
+        row.operator(ImportXMLRateList.bl_idname, text="", icon="ADD")
         row = layout.row()
         row.operator(CUSTOM_OT_collapse_to_level_0.bl_idname, text="Collapse")
         row.operator(CUSTOM_OT_collapse_to_level_1.bl_idname, text="To Level 1")
@@ -1492,6 +1554,13 @@ def register():
         description="Prepend the parent item description to the selected item description",
         default=False,
     )
+    bpy.types.Scene.xml_rate_recent_path = bpy.props.EnumProperty(
+        name="Recent Price Lists",
+        description="Recently opened price lists — select to load",
+        items=_get_recent_items,
+        update=_on_recent_select,
+    )
+    _refresh_recent_cache()
 
 
 def unregister():
@@ -1501,6 +1570,7 @@ def unregister():
     del bpy.types.Scene.xml_rate_title
     del bpy.types.Scene.xml_rate_year
     del bpy.types.Scene.xml_rate_combine_desc
+    del bpy.types.Scene.xml_rate_recent_path
 
 
 register()
