@@ -973,7 +973,7 @@ _importing = False  # guard against recursive import triggered by setting xml_ra
 
 def _recent_file_path():
     import os
-    return os.path.join(bpy.utils.user_resource('CONFIG'), 'ImportXMLRateList_recent.json')
+    return os.path.join(bpy.utils.user_resource('CONFIG'), 'PriceListImporter_recent.json')
 
 
 def _load_recent():
@@ -1099,11 +1099,11 @@ def _do_import(filepath, context, report=None):
     return True
 
 
-class ImportXMLRateList(Operator, ImportHelper):
-    """This appears in the tooltip of the operator and in the generated docs"""
+class ImportPriceList(Operator, ImportHelper):
+    """Import an Italian regional price list (prezzario) in XML or XPWE format."""
 
-    bl_idname = "import.xml_rate_list_import"  # important since its how bpy.ops.import_test.some_data is constructed
-    bl_label = "Import XML Rate List"
+    bl_idname = "import.price_list"
+    bl_label = "Import Price List"
     filename_ext = ".xml"
     filter_glob: bpy.props.StringProperty(
         default="*.xml;*.xpwe",
@@ -1477,7 +1477,7 @@ class RateListPanel(bpy.types.Panel):
         layout = self.layout
         row = layout.row(align=True)
         row.prop(context.scene, "xml_rate_recent_path", text="")
-        row.operator(ImportXMLRateList.bl_idname, text="", icon="ADD")
+        row.operator(ImportPriceList.bl_idname, text="", icon="ADD")
         row = layout.row()
         row.operator(CUSTOM_OT_collapse_to_level_0.bl_idname, text="Collapse")
         row.operator(CUSTOM_OT_collapse_to_level_1.bl_idname, text="To Level 1")
@@ -1532,7 +1532,7 @@ classes = [
     CUSTOM_OT_expand_all,
     UpdateActiveCostItem,
     ImportRateToActiveCostSchedule,
-    ImportXMLRateList,
+    ImportPriceList,
     RateListPropGroup,
     RateListPanel,
 ]
