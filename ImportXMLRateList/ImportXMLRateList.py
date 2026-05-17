@@ -213,6 +213,174 @@ class ParserXmlSardegna(XMLParser):
         return None
 
 
+class ParserXpwe(XMLParser):
+    """Parser per formato XPWE (Primus e compatibili)."""
+
+    @staticmethod
+    def _text(elem, path, default=""):
+        try:
+            found = elem.find(path)
+            return (found.text or default) if found is not None else default
+        except Exception:
+            return default
+
+    @staticmethod
+    def _float(text):
+        if not text:
+            return 0.0
+        try:
+            return float(text.replace(",", "."))
+        except (ValueError, TypeError):
+            return 0.0
+
+    def parse_items(self, xml_content):
+        xml_content = self.clean_xml_content(xml_content)
+        root = self.get_root(xml_content)
+
+        dati = root.find("PweDatiGenerali")
+        if dati is None:
+            try:
+                dati = list(root)[0].find("PweDatiGenerali")
+            except Exception:
+                return
+
+        self._parse_header(dati)
+        supercaps, caps = self._read_categories(dati)
+
+        misurazioni = root.find("PweMisurazioni")
+        if misurazioni is None:
+            try:
+                misurazioni = list(root)[0].find("PweMisurazioni")
+            except Exception:
+                return
+        if misurazioni is None or len(list(misurazioni)) == 0:
+            return
+
+        ep_root = list(misurazioni)[0]  # PweElencoPrezzi
+        ep_elements = ep_root.findall("EPItem")
+
+        index = 0
+        spcap_to_index = {}  # SuperCapitolo ID → list index
+        cap_to_index = {}    # (id_spcap, id_cap) → list index
+
+        for ep in ep_elements:
+            if not ep.get("ID"):
+                continue
+
+            tariffa = self._text(ep, "Tariffa")
+            if self._text(ep, "Flags") == "134217728":
+                tariffa = "VDS_" + tariffa
+
+            name = self.clean_string(self._text(ep, "DesBreve") or self._text(ep, "DesRidotta"))
+            desc = self.clean_string(self._text(ep, "DesEstesa"))
+            unit = self._text(ep, "UnMisura")
+            prezzo_raw = self._text(ep, "Prezzo1")
+            prezzo = self._float(prezzo_raw) if prezzo_raw and prezzo_raw != "0" else 0.0
+
+            def incidenza(tag):
+                val = self._float(self._text(ep, tag))
+                return round(val * prezzo / 100, 6) if val else 0.0
+
+            id_spcap = self._text(ep, "IDSpCap")
+            id_cap = self._text(ep, "IDCap")
+
+            # create SuperCapitolo on first encounter
+            if id_spcap and id_spcap not in spcap_to_index:
+                sc = supercaps.get(id_spcap, {})
+                self.xml_rate_list.append({
+                    "index": index, "level": 0, "is_parent": True, "parents": "",
+                    "id": sc.get("codice", ""), "name": sc.get("desc", ""),
+                    "desc": "", "unit": "", "value": 0.0,
+                    "labor": 0.0, "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+                })
+                spcap_to_index[id_spcap] = index
+                index += 1
+
+            # create Capitolo on first encounter
+            cap_key = (id_spcap, id_cap)
+            if id_cap and cap_key not in cap_to_index:
+                cap = caps.get(id_cap, {})
+                sp_parent = str(spcap_to_index[id_spcap]) if id_spcap in spcap_to_index else ""
+                self.xml_rate_list.append({
+                    "index": index, "level": 1 if sp_parent else 0,
+                    "is_parent": True, "parents": sp_parent,
+                    "id": cap.get("codice", ""), "name": cap.get("desc", ""),
+                    "desc": "", "unit": "", "value": 0.0,
+                    "labor": 0.0, "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+                })
+                cap_to_index[cap_key] = index
+                index += 1
+
+            # build parents list for EPItem
+            parents_parts = []
+            if id_spcap in spcap_to_index:
+                parents_parts.append(str(spcap_to_index[id_spcap]))
+            if cap_key in cap_to_index:
+                parents_parts.append(str(cap_to_index[cap_key]))
+
+            self.xml_rate_list.append({
+                "index": index,
+                "level": len(parents_parts),
+                "is_parent": False,
+                "parents": ",".join(parents_parts),
+                "id": tariffa,
+                "name": name,
+                "desc": desc,
+                "unit": unit,
+                "value": prezzo,
+                "labor": incidenza("IncMDO"),
+                "equipment": incidenza("IncATTR"),
+                "materials": incidenza("IncMAT"),
+                "safety": incidenza("IncSIC"),
+            })
+            index += 1
+
+    def _parse_header(self, dati):
+        try:
+            child = list(dati)[0]
+            content = list(child)[0] if list(child) else child
+            oggetto = self._text(content, "Oggetto")
+            if oggetto:
+                self.title = self.clean_string(oggetto)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _read_categories(dati):
+        supercaps = {}
+        caps = {}
+        try:
+            cap_cat = dati.find("PweDGCapitoliCategorie")
+            if cap_cat is None:
+                return supercaps, caps
+
+            sc_found = cap_cat.find("PweDGSuperCapitoli")
+            if sc_found is not None:
+                for elem in sc_found:
+                    sc_id = elem.get("ID")
+                    if sc_id:
+                        supercaps[sc_id] = {
+                            "codice": ParserXpwe._text(elem, "Codice"),
+                            "desc": ParserXpwe._text(elem, "DesSintetica"),
+                        }
+
+            cap_found = cap_cat.find("PweDGCapitoli")
+            if cap_found is not None:
+                for elem in cap_found:
+                    cap_id = elem.get("ID")
+                    if cap_id:
+                        desc = ParserXpwe._text(elem, "DesSintetica")
+                        if desc == "Nuova voce":
+                            desc = ParserXpwe._text(elem, "DesEstesa")
+                        caps[cap_id] = {
+                            "codice": ParserXpwe._text(elem, "Codice"),
+                            "desc": desc,
+                        }
+        except Exception:
+            pass
+        return supercaps, caps
+
+
 class ParserXmlSix(XMLParser):
     """Parser per formato XML SIX."""
 
@@ -357,9 +525,9 @@ class ImportXMLRateList(Operator, ImportHelper):
     bl_label = "Import XML Rate List"
     filename_ext = ".xml"
     filter_glob: bpy.props.StringProperty(
-        default="*.xml",
+        default="*.xml;*.xpwe",
         options={"HIDDEN"},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
+        maxlen=255,
     )
     chosen_parser: bpy.props.EnumProperty(
         name="Parser",
@@ -393,6 +561,7 @@ class ImportXMLRateList(Operator, ImportHelper):
         """
 
         parsers = {
+            "PweDatiGenerali": ParserXpwe,
             'xmlns="six.xsd"': ParserXmlSix,
             'autore="Regione Toscana"': ParserXmlToscana,
             'autore="Regione Calabria"': ParserXmlToscana,
@@ -403,7 +572,6 @@ class ImportXMLRateList(Operator, ImportHelper):
             "<pdf>Prezzario_Regione_Basilicata": ParserXmlBasilicata,
             "<autore>Regione Lombardia": ParserXmlLombardia,
             "<autore>LOM": ParserXmlLombardia,
-            #'xsi:noNamespaceSchemaLocation="Parte': LeenoImport_XmlLombardia.parseXML1,
         }
 
         # controlla se il file è di tipo conosciuto...
