@@ -1282,8 +1282,9 @@ def get_parent_desc(selected_rate):
 
 
 def create_cost_item(file, selected_rate, create_new_item=True, combine_desc=False):
-    import ifcopenshell
-    import bonsai
+    from bonsai import tool
+    import ifcopenshell.util.cost
+    import bonsai.bim.module.cost.data
 
     active_ui_cost_item = bpy.context.scene.BIMCostProperties.active_cost_item
     active_ifc_cost_item = file.by_id(active_ui_cost_item.ifc_definition_id)
@@ -1292,65 +1293,71 @@ def create_cost_item(file, selected_rate, create_new_item=True, combine_desc=Fal
         if active_ifc_cost_item in ifcopenshell.util.cost.get_root_cost_items(
             file.by_id(bpy.context.scene.BIMCostProperties.active_cost_schedule_id)
         ):
-            cost_item = ifcopenshell.api.cost.add_cost_item(
-                file, cost_item=active_ifc_cost_item
-            )
+            cost_item = tool.Ifc.run("cost.add_cost_item", cost_item=active_ifc_cost_item)
         elif active_ui_cost_item.has_children:
-            cost_item = ifcopenshell.api.cost.add_cost_item(
-                file, cost_item=active_ifc_cost_item
-            )
+            cost_item = tool.Ifc.run("cost.add_cost_item", cost_item=active_ifc_cost_item)
         else:
-            cost_item = ifcopenshell.api.cost.add_cost_item(
-                file, cost_item=active_ifc_cost_item.Nests[0].RelatingObject
-            )
+            cost_item = tool.Ifc.run("cost.add_cost_item", cost_item=active_ifc_cost_item.Nests[0].RelatingObject)
     else:
         cost_item = active_ifc_cost_item
-        # Remove previous cost values before updating
         if cost_item.CostValues:
             for cost_value in list(cost_item.CostValues):
-                ifcopenshell.api.cost.remove_cost_value(file, parent=cost_item, cost_value=cost_value)
+                tool.Ifc.run("cost.remove_cost_value", parent=cost_item, cost_value=cost_value)
 
     rate_attrib = json.loads(selected_rate.attributes)
-    cost_item.Identification = rate_attrib["id"]
-    cost_item.Name = rate_attrib["name"]
     if combine_desc:
         parent_desc = get_parent_desc(selected_rate)
-        cost_item.Description = (parent_desc + "\n" + rate_attrib["desc"]).strip() if parent_desc else rate_attrib["desc"]
+        desc = (parent_desc + "\n" + rate_attrib["desc"]).strip() if parent_desc else rate_attrib["desc"]
     else:
-        cost_item.Description = rate_attrib["desc"]
-    cost_value = ifcopenshell.api.cost.add_cost_value(file, parent=cost_item)
+        desc = rate_attrib["desc"]
 
-    ifcopenshell.api.cost.edit_cost_value(
-        file, cost_value, attributes={"AppliedValue": rate_attrib["value"]}
-    )
+    tool.Ifc.run("cost.edit_cost_item", cost_item=cost_item, attributes={
+        "Identification": rate_attrib["id"],
+        "Name": rate_attrib["name"],
+        "Description": desc,
+    })
+
+    cost_value = tool.Ifc.run("cost.add_cost_value", parent=cost_item)
 
     if float(rate_attrib["labor"]) != 0.0:
-        cost_value.ArithmeticOperator = "ADD"
-        sub_cost_value_1 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
-        sub_cost_value_2 = ifcopenshell.api.cost.add_cost_value(file, parent=cost_value)
-        ifcopenshell.api.cost.edit_cost_value(
-            file,
-            sub_cost_value_1,
+        tool.Ifc.run("cost.edit_cost_value", cost_value=cost_value, attributes={
+            "AppliedValue": rate_attrib["value"],
+            "ArithmeticOperator": "ADD",
+        })
+        sub_cost_value_1 = tool.Ifc.run("cost.add_cost_value", parent=cost_value)
+        sub_cost_value_2 = tool.Ifc.run("cost.add_cost_value", parent=cost_value)
+        tool.Ifc.run("cost.edit_cost_value",
+            cost_value=sub_cost_value_1,
             attributes={"AppliedValue": rate_attrib["value"] - rate_attrib["labor"]},
         )
-        ifcopenshell.api.cost.edit_cost_value(
-            file,
-            sub_cost_value_2,
+        tool.Ifc.run("cost.edit_cost_value",
+            cost_value=sub_cost_value_2,
             attributes={"Category": "Labor", "AppliedValue": rate_attrib["labor"]},
         )
+    else:
+        tool.Ifc.run("cost.edit_cost_value", cost_value=cost_value, attributes={"AppliedValue": rate_attrib["value"]})
 
     bonsai.bim.module.cost.data.refresh()
-    bonsai.tool.Cost.load_cost_schedule_tree()
+    tool.Cost.load_cost_schedule_tree()
 
 
-class UpdateActiveCostItem(bpy.types.Operator):
+try:
+    from bonsai import tool as _bonsai_tool
+    _IfcOperatorBase = (_bonsai_tool.Ifc.Operator, bpy.types.Operator)
+    del _bonsai_tool
+except Exception:
+    _IfcOperatorBase = (bpy.types.Operator,)
+
+
+class UpdateActiveCostItem(*_IfcOperatorBase):
     """Update active cost item with selected rate data."""
 
     bl_idname = "import.xml_rate_update_cost_item"
     bl_label = "Update active cost item"
+    bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
-    def poll(self, context):
+    def poll(cls, context):
         try:
             props = bpy.context.scene.BIMCostProperties
             return (
@@ -1361,28 +1368,23 @@ class UpdateActiveCostItem(bpy.types.Operator):
         except:
             return False
 
-    def execute(self, context):
+    def _execute(self, context):
         from bonsai import tool
-
-        xml_rate_list_selected_item = bpy.context.scene.xml_rate_list[
-            bpy.context.scene.xml_rate_list_active_index
-        ]
+        selected_rate = bpy.context.scene.xml_rate_list[bpy.context.scene.xml_rate_list_active_index]
         file = tool.Ifc.get()
-        create_cost_item(
-            file, selected_rate=xml_rate_list_selected_item, create_new_item=False,
-            combine_desc=context.scene.xml_rate_combine_desc,
-        )
-        return {"FINISHED"}
+        create_cost_item(file, selected_rate=selected_rate, create_new_item=False,
+            combine_desc=context.scene.xml_rate_combine_desc)
 
 
-class ImportRateToActiveCostSchedule(bpy.types.Operator):
+class ImportRateToActiveCostSchedule(*_IfcOperatorBase):
     """Add a new cost item to the active schedule with selected rate data."""
 
     bl_idname = "import.xml_rate_add_cost_item"
     bl_label = "Import Rate to Active Cost Schedule"
+    bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
-    def poll(self, context):
+    def poll(cls, context):
         try:
             props = bpy.context.scene.BIMCostProperties
             return (
@@ -1393,18 +1395,12 @@ class ImportRateToActiveCostSchedule(bpy.types.Operator):
         except:
             return False
 
-    def execute(self, context):
+    def _execute(self, context):
         from bonsai import tool
-
-        selected_rate = bpy.context.scene.xml_rate_list[
-            bpy.context.scene.xml_rate_list_active_index
-        ]
+        selected_rate = bpy.context.scene.xml_rate_list[bpy.context.scene.xml_rate_list_active_index]
         file = tool.Ifc.get()
-        create_cost_item(
-            file, selected_rate=selected_rate, create_new_item=True,
-            combine_desc=context.scene.xml_rate_combine_desc,
-        )
-        return {"FINISHED"}
+        create_cost_item(file, selected_rate=selected_rate, create_new_item=True,
+            combine_desc=context.scene.xml_rate_combine_desc)
 
 
 class XmlRateCustomUIList(bpy.types.UIList):
