@@ -184,21 +184,317 @@ class ParserXmlVeneto(PriceListParser):
 
 
 class ParserXmlBasilicata(PriceListParser):
+    """Parser per formato XML Basilicata (struttura gerarchica capitoli/categorie/voci/sottovoci)."""
+
     def parse_items(self, xml_content):
-        # TODO: implement custom parser
-        return None
+        xml_content = self.clean_xml_content(xml_content)
+        root = self.get_stripped_xml_namespaces_root(xml_content)
+
+        pdf_el = root.find('pdf')
+        if pdf_el is not None and pdf_el.text:
+            titolo = pdf_el.text
+            if titolo.endswith('.pdf'):
+                titolo = titolo[:-4]
+            self.title = ' '.join(titolo.split('_'))
+
+        capitoli = root.find('capitoli')
+        if capitoli is None:
+            return
+
+        index = 0
+
+        for capitolo in capitoli:
+            codice_sc = (capitolo.findtext('codice') or '').strip()
+            desc_sc = (capitolo.findtext('descrizione') or '').strip()
+            self.xml_rate_list.append({
+                "index": index, "level": 0, "is_parent": True, "parents": "",
+                "id": codice_sc, "name": desc_sc, "desc": "", "unit": "",
+                "value": 0.0, "labor": 0.0, "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+            })
+            sc_idx = index
+            index += 1
+
+            categorie = capitolo.find('categorie')
+            if categorie is None:
+                continue
+
+            for categoria in categorie:
+                codice_cat_raw = (categoria.findtext('codice') or '').strip()
+                codice_cat = codice_sc + '.' + codice_cat_raw
+                desc_cat = (categoria.findtext('descrizione') or '').strip()
+                self.xml_rate_list.append({
+                    "index": index, "level": 1, "is_parent": True, "parents": str(sc_idx),
+                    "id": codice_cat, "name": desc_cat, "desc": "", "unit": "",
+                    "value": 0.0, "labor": 0.0, "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+                })
+                cat_idx = index
+                index += 1
+
+                voci = categoria.find('voci')
+                if voci is None:
+                    continue
+
+                for voce in voci:
+                    codice_v = (voce.findtext('codice') or '').strip()
+                    codice_voce = codice_cat + '.' + codice_v
+                    voce_desc = (voce.findtext('descrizione') or '').strip()
+
+                    sottovoci = voce.find('sottovoci')
+                    if sottovoci is None:
+                        continue
+
+                    for sottovoce in sottovoci:
+                        codice_sv = (sottovoce.findtext('codice') or '').strip()
+                        sv_desc = (sottovoce.findtext('descrizione') or '').strip()
+                        codice = codice_voce + '.' + codice_sv
+                        desc = self.clean_string(voce_desc + ('\n- ' + sv_desc if sv_desc else ''))
+
+                        um_el = sottovoce.find('unitaMisura')
+                        um = ''
+                        if um_el is not None:
+                            um = (um_el.findtext('codice') or '').strip()
+
+                        prezzo = 0.0
+                        try:
+                            prezzo = float(sottovoce.findtext('prezzo') or 0)
+                        except (ValueError, TypeError):
+                            pass
+
+                        labor = 0.0
+                        try:
+                            labor = float(sottovoce.findtext('manodopera') or 0) * prezzo / 100
+                        except (ValueError, TypeError):
+                            pass
+
+                        self.xml_rate_list.append({
+                            "index": index, "level": 2, "is_parent": False,
+                            "parents": str(sc_idx) + ',' + str(cat_idx),
+                            "id": codice, "name": desc, "desc": desc, "unit": um,
+                            "value": prezzo, "labor": labor,
+                            "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+                        })
+                        index += 1
 
 
 class ParserXmlToscana(PriceListParser):
+    """Parser per formato XML Toscana (PRT/EASY namespace variants).
+    Usato anche da Calabria, Campania, Sardegna."""
+
     def parse_items(self, xml_content):
-        # TODO: implement custom parser
-        return None
+        xml_content = self.clean_xml_content(xml_content)
+        xml_content = self._fix_namespace(xml_content)
+        root = self.get_stripped_xml_namespaces_root(xml_content)
+
+        intestazione = root.find('intestazione')
+        if intestazione is not None:
+            dettaglio = intestazione.find('dettaglio')
+            if dettaglio is not None:
+                anno = dettaglio.attrib.get('anno', '')
+                area = dettaglio.attrib.get('area', '')
+                self.title = f"{area} {anno}".strip()
+                self.year = anno
+
+        contenuto = root.find('Contenuto')
+        if contenuto is None:
+            return
+        articoli = contenuto.findall('Articolo')
+
+        index = 0
+        supercat_idx = {}
+        cat_idx = {}
+
+        for articolo in articoli:
+            codice = articolo.attrib.get('codice', '').strip()
+            if not codice:
+                continue
+            parts = codice.split('.')
+            if len(parts) < 2:
+                continue
+            codice_sc = parts[0]
+            codice_cat = parts[0] + '.' + parts[1]
+
+            supercat = (articolo.findtext('tipo') or articolo.findtext('livello1') or '').strip()
+            cat = (articolo.findtext('capitolo') or articolo.findtext('livello2') or '').strip()
+
+            if codice_sc not in supercat_idx:
+                self.xml_rate_list.append({
+                    "index": index, "level": 0, "is_parent": True, "parents": "",
+                    "id": codice_sc, "name": supercat or codice_sc, "desc": "", "unit": "",
+                    "value": 0.0, "labor": 0.0, "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+                })
+                supercat_idx[codice_sc] = index
+                index += 1
+
+            if codice_cat not in cat_idx:
+                self.xml_rate_list.append({
+                    "index": index, "level": 1, "is_parent": True,
+                    "parents": str(supercat_idx[codice_sc]),
+                    "id": codice_cat, "name": cat or codice_cat, "desc": "", "unit": "",
+                    "value": 0.0, "labor": 0.0, "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+                })
+                cat_idx[codice_cat] = index
+                index += 1
+
+            voce = (articolo.findtext('voce') or articolo.findtext('livello3') or '').strip()
+            art = (articolo.findtext('articolo') or articolo.findtext('livello4') or '').strip()
+            desc = self.clean_string(voce + ('\n' + art if art else ''))
+
+            um_el = articolo.find('um')
+            um = (um_el.text or '').strip() if um_el is not None else ''
+            prezzo = self._parse_price(articolo.findtext('prezzo') or '')
+
+            labor = 0.0
+            safety = 0.0
+            analisi = articolo.find('Analisi')
+            if analisi is not None:
+                try:
+                    safety = float(analisi.find('onerisicurezza').attrib.get('valore', 0))
+                except Exception:
+                    pass
+                try:
+                    labor = float(analisi.find('incidenzamanodopera').attrib.get('percentuale', 0)) * prezzo / 100
+                except Exception:
+                    pass
+
+            self.xml_rate_list.append({
+                "index": index, "level": 2, "is_parent": False,
+                "parents": str(supercat_idx[codice_sc]) + ',' + str(cat_idx[codice_cat]),
+                "id": codice, "name": desc, "desc": desc, "unit": um,
+                "value": prezzo, "labor": labor, "equipment": 0.0, "materials": 0.0, "safety": safety,
+            })
+            index += 1
+
+    @staticmethod
+    def _fix_namespace(data):
+        if '<EASY:' in data and 'xmlns:EASY=' not in data:
+            tag = '<EASY:Prezzario>'
+            pos = data.find(tag)
+            if pos >= 0:
+                ins = pos + len(tag) - 1
+                data = data[:ins] + ' xmlns:EASY="mynamespace"' + data[ins:]
+        if '<PRT:' in data and 'xmlns:PRT=' not in data:
+            tag = '<PRT:Prezzario>'
+            pos = data.find(tag)
+            if pos >= 0:
+                ins = pos + len(tag) - 1
+                data = data[:ins] + ' xmlns:PRT="mynamespace"' + data[ins:]
+        return data
+
+    @staticmethod
+    def _parse_price(text):
+        if not text:
+            return 0.0
+        text = text.strip().replace(',', '.')
+        parts = text.split('.')
+        if len(parts) > 2:
+            text = ''.join(parts[:-1]) + '.' + parts[-1]
+        try:
+            return float(text)
+        except ValueError:
+            return 0.0
 
 
 class ParserXmlLiguria(PriceListParser):
+    """Parser per formato XML Liguria (stessa struttura Toscana, differenze nei campi)."""
+
     def parse_items(self, xml_content):
-        # TODO: implement custom parser
-        return None
+        xml_content = self.clean_xml_content(xml_content)
+        root = self.get_stripped_xml_namespaces_root(xml_content)
+
+        intestazione = root.find('intestazione')
+        if intestazione is not None:
+            dettaglio = intestazione.find('dettaglio')
+            if dettaglio is not None:
+                anno = dettaglio.attrib.get('anno', '')
+                area = dettaglio.attrib.get('area', '')
+                self.title = f"{area} {anno}".strip()
+                self.year = anno
+
+        contenuto = root.find('Contenuto')
+        if contenuto is None:
+            return
+        articoli = contenuto.findall('Articolo')
+
+        index = 0
+        supercat_idx = {}
+        cat_idx = {}
+
+        for articolo in articoli:
+            codice = articolo.attrib.get('codice', '').strip()
+            if not codice:
+                continue
+            parts = codice.split('.')
+            if len(parts) < 2:
+                continue
+            codice_sc = parts[0]
+            codice_cat = parts[0] + '.' + parts[1]
+
+            tipo_el = articolo.find('tipo')
+            supercat = (tipo_el.text or '').strip() if tipo_el is not None else ''
+            cap_el = articolo.find('capitolo')
+            cat = (cap_el.text or '').strip() if cap_el is not None else ''
+
+            if codice_sc not in supercat_idx:
+                self.xml_rate_list.append({
+                    "index": index, "level": 0, "is_parent": True, "parents": "",
+                    "id": codice_sc, "name": supercat or codice_sc, "desc": "", "unit": "",
+                    "value": 0.0, "labor": 0.0, "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+                })
+                supercat_idx[codice_sc] = index
+                index += 1
+
+            if codice_cat not in cat_idx:
+                self.xml_rate_list.append({
+                    "index": index, "level": 1, "is_parent": True,
+                    "parents": str(supercat_idx[codice_sc]),
+                    "id": codice_cat, "name": cat or codice_cat, "desc": "", "unit": "",
+                    "value": 0.0, "labor": 0.0, "equipment": 0.0, "materials": 0.0, "safety": 0.0,
+                })
+                cat_idx[codice_cat] = index
+                index += 1
+
+            voce_el = articolo.find('voce')
+            voce = (voce_el.text or '').strip() if voce_el is not None else ''
+            art_el = articolo.find('articolo')
+            art = (art_el.text or '').strip() if art_el is not None else ''
+            desc = self.clean_string(voce + ('\n- ' + art if art else ''))
+
+            um_el = articolo.find('um')
+            um = ''
+            if um_el is not None and um_el.text:
+                um = um_el.text.split('(')[-1].rstrip(')').strip()
+
+            prezzo_el = articolo.find('prezzo')
+            prezzo = 0.0
+            if prezzo_el is not None:
+                try:
+                    prezzo = float(prezzo_el.attrib.get('valore', 0))
+                except (ValueError, TypeError):
+                    pass
+
+            labor = 0.0
+            mo_el = articolo.find('mo')
+            if mo_el is not None and mo_el.text:
+                try:
+                    labor = float(mo_el.text) * prezzo / 100
+                except (ValueError, TypeError):
+                    pass
+
+            safety = 0.0
+            sic_el = articolo.find('sicurezza')
+            if sic_el is not None and sic_el.text:
+                try:
+                    safety = float(sic_el.text)
+                except (ValueError, TypeError):
+                    pass
+
+            self.xml_rate_list.append({
+                "index": index, "level": 2, "is_parent": False,
+                "parents": str(supercat_idx[codice_sc]) + ',' + str(cat_idx[codice_cat]),
+                "id": codice, "name": desc, "desc": desc, "unit": um,
+                "value": prezzo, "labor": labor, "equipment": 0.0, "materials": 0.0, "safety": safety,
+            })
+            index += 1
 
 
 class ParserXmlLombardia(PriceListParser):
@@ -360,10 +656,6 @@ class ParserXmlLombardia(PriceListParser):
                 index += 1
 
 
-class ParserXmlSardegna(PriceListParser):
-    def parse_items(self, xml_content):
-        # TODO: implement custom parser
-        return None
 
 
 class ParserXpwe(PriceListParser):
@@ -719,7 +1011,7 @@ class ImportXMLRateList(Operator, ImportHelper):
             'autore="Regione Toscana"': ParserXmlToscana,
             'autore="Regione Calabria"': ParserXmlToscana,
             'autore="Regione Campania"': ParserXmlToscana,
-            'autore="Regione Sardegna"': ParserXmlSardegna,
+            'autore="Regione Sardegna"': ParserXmlToscana,
             'autore="Regione Liguria"': ParserXmlLiguria,
             "rks=": ParserXmlVeneto,
             "<pdf>Prezzario_Regione_Basilicata": ParserXmlBasilicata,
