@@ -999,6 +999,7 @@ class ParserIfcCostSchedule(PriceListParser):
             has_children = bool(cost_item.IsNestedBy)
             self.xml_rate_list.append({
                 "index": index,
+                "ifc_id": cost_item.id(),
                 "level": level,
                 "is_parent": has_children,
                 "parents": ",".join(str(p) for p in parent_indices),
@@ -1403,6 +1404,41 @@ class ImportRateToActiveCostSchedule(*_IfcOperatorBase):
             combine_desc=context.scene.xml_rate_combine_desc)
 
 
+class AssignRateValue(*_IfcOperatorBase):
+    """Assign the selected rate as the cost value of the active cost item."""
+
+    bl_idname = "import.xml_rate_assign_cost_value"
+    bl_label = "Assign Cost Rate Value"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            if context.scene.rate_source_mode != 'IFC_SCHEDULE':
+                return False
+            props = context.scene.BIMCostProperties
+            if str(props.active_cost_schedule_id) == context.scene.ifc_rate_source_schedule:
+                return False
+            if props.active_cost_schedule_id == 0 or props.active_cost_item is None:
+                return False
+            selected = context.scene.xml_rate_list[context.scene.xml_rate_list_active_index]
+            return json.loads(selected.attributes).get("ifc_id", 0) != 0
+        except:
+            return False
+
+    def _execute(self, context):
+        from bonsai import tool
+        import bonsai.bim.module.cost.data
+        selected = context.scene.xml_rate_list[context.scene.xml_rate_list_active_index]
+        ifc_id = json.loads(selected.attributes).get("ifc_id", 0)
+        file = tool.Ifc.get()
+        cost_item = file.by_id(context.scene.BIMCostProperties.active_cost_item.ifc_definition_id)
+        cost_rate = file.by_id(ifc_id)
+        tool.Ifc.run("cost.assign_cost_value", cost_item=cost_item, cost_rate=cost_rate)
+        bonsai.bim.module.cost.data.refresh()
+        tool.Cost.load_cost_schedule_tree()
+
+
 class XmlRateCustomUIList(bpy.types.UIList):
     def draw_filter(self, context, layout):
         # Only show search box, no other filter options
@@ -1640,6 +1676,9 @@ class RateListPanel(bpy.types.Panel):
             btn_row.operator(
                 UpdateActiveCostItem.bl_idname, text="", icon="FILE_REFRESH"
             )
+            btn_row.operator(
+                AssignRateValue.bl_idname, text="", icon="COPYDOWN"
+            )
             row = box.row()
             box.label(text=rate_info[1])
             row = box.row()
@@ -1679,6 +1718,7 @@ classes = [
     IFC_OT_rate_source_refresh,
     UpdateActiveCostItem,
     ImportRateToActiveCostSchedule,
+    AssignRateValue,
     ImportRateList,
     RateListPropGroup,
     RateListPanel,
