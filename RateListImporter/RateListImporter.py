@@ -963,6 +963,65 @@ class ParserXmlSix(PriceListParser):
         return all(float(q.attrib.get("valore", 0)) == 0.0 for q in quotazioni)
 
 
+class ParserIfcCostSchedule(PriceListParser):
+    """Parser per IfcCostSchedule — progetto corrente o file IFC esterno."""
+
+    def parse_schedule(self, file, schedule_id):
+        import ifcopenshell.util.cost as cost_util
+        schedule = file.by_id(int(schedule_id))
+        self.title = schedule.Name or f"Schedule {schedule_id}"
+        root_items = cost_util.get_root_cost_items(schedule)
+        index = 0
+
+        def _val(cost_item):
+            for cv in (cost_item.CostValues or []):
+                try:
+                    v = cv.AppliedValue
+                    if v is not None:
+                        return float(v.wrappedValue if hasattr(v, 'wrappedValue') else v)
+                except Exception:
+                    pass
+            return 0.0
+
+        def _labor(cost_item):
+            for cv in (cost_item.CostValues or []):
+                for sub in (getattr(cv, 'Components', None) or []):
+                    if getattr(sub, 'Category', None) == 'Labor':
+                        try:
+                            v = sub.AppliedValue
+                            return float(v.wrappedValue if hasattr(v, 'wrappedValue') else v)
+                        except Exception:
+                            pass
+            return 0.0
+
+        def traverse(cost_item, level, parent_indices):
+            nonlocal index
+            has_children = bool(cost_item.IsNestedBy)
+            self.xml_rate_list.append({
+                "index": index,
+                "level": level,
+                "is_parent": has_children,
+                "parents": ",".join(str(p) for p in parent_indices),
+                "id": cost_item.Identification or "",
+                "name": cost_item.Name or "",
+                "desc": cost_item.Description or "",
+                "unit": "",
+                "value": _val(cost_item),
+                "labor": _labor(cost_item),
+                "equipment": 0.0,
+                "materials": 0.0,
+                "safety": 0.0,
+            })
+            current_index = index
+            index += 1
+            for rel in (cost_item.IsNestedBy or []):
+                for child in rel.RelatedObjects:
+                    traverse(child, level + 1, parent_indices + [current_index])
+
+        for root_item in root_items:
+            traverse(root_item, 0, [])
+
+
 # ---------------------------------------------------------------------------
 # Recent files support
 # ---------------------------------------------------------------------------
@@ -1026,6 +1085,58 @@ def _on_recent_select(self, context):
 
 
 # ---------------------------------------------------------------------------
+# IFC project schedule source
+# ---------------------------------------------------------------------------
+
+_ifc_schedules_cache = []
+
+
+def _refresh_ifc_schedules_cache():
+    global _ifc_schedules_cache
+    try:
+        from bonsai import tool
+        file = tool.Ifc.get()
+        if file is None:
+            _ifc_schedules_cache = [('__NONE__', '— nessun schedule IFC —', '')]
+            return
+        schedules = file.by_type("IfcCostSchedule")
+        _ifc_schedules_cache = [
+            (str(s.id()), s.Name or f"Schedule {s.id()}", "")
+            for s in schedules
+        ] or [('__NONE__', '— nessun schedule IFC —', '')]
+    except Exception:
+        _ifc_schedules_cache = [('__NONE__', '— nessun schedule IFC —', '')]
+
+
+def _get_ifc_schedules(self, context):
+    return _ifc_schedules_cache or [('__NONE__', '— nessun schedule IFC —', '')]
+
+
+def _on_ifc_schedule_select(self, context):
+    schedule_id = self.ifc_rate_source_schedule
+    if schedule_id and schedule_id != '__NONE__':
+        _do_import_ifc(schedule_id, context)
+    else:
+        context.scene.xml_rate_list.clear()
+
+
+def _on_source_mode_change(self, context):
+    if self.rate_source_mode == 'FILE':
+        path = context.scene.xml_rate_recent_path
+        if path and path != '__NONE__':
+            _do_import(path, context)
+        else:
+            context.scene.xml_rate_list.clear()
+    else:
+        _refresh_ifc_schedules_cache()
+        schedule_id = context.scene.ifc_rate_source_schedule
+        if schedule_id and schedule_id != '__NONE__':
+            _do_import_ifc(schedule_id, context)
+        else:
+            context.scene.xml_rate_list.clear()
+
+
+# ---------------------------------------------------------------------------
 # Core parser detection and import logic
 # ---------------------------------------------------------------------------
 
@@ -1050,6 +1161,26 @@ def _find_xml_parser(xml_content):
     return None
 
 
+def _populate_list_from_parser(parser, context):
+    context.scene.xml_rate_title = parser.title
+    context.scene.xml_rate_year = parser.year
+    context.scene.xml_rate_list.clear()
+    for rate in parser.xml_rate_list:
+        item = context.scene.xml_rate_list.add()
+        if rate["is_parent"] and rate["name"].startswith("Group "):
+            item.name = rate["id"]
+        else:
+            item.name = (rate["id"] + " - " + rate["name"]).strip(" -") or f"Item {rate['index']}"
+        item.level = rate["level"]
+        item.is_parent = rate["is_parent"]
+        item.parents = rate["parents"]
+        item.attributes = json.dumps(rate)
+        if item.is_parent:
+            item.is_expanded = False
+    if len(context.scene.xml_rate_list) > 0:
+        context.scene.xml_rate_list_active_index = 0
+
+
 def _do_import(filepath, context, report=None):
     import os, re
     xml_content = PriceListParser.get_xml_content(filepath)
@@ -1068,25 +1199,7 @@ def _do_import(filepath, context, report=None):
     parser.year = match.group(1) if match else ""
     parser.title = name
 
-    context.scene.xml_rate_title = parser.title
-    context.scene.xml_rate_year = parser.year
-
-    context.scene.xml_rate_list.clear()
-    for rate in parser.xml_rate_list:
-        item = context.scene.xml_rate_list.add()
-        if rate["is_parent"] and rate["name"].startswith("Group "):
-            item.name = rate["id"]
-        else:
-            item.name = rate["id"] + " - " + rate["name"]
-        item.level = rate["level"]
-        item.is_parent = rate["is_parent"]
-        item.parents = rate["parents"]
-        item.attributes = json.dumps(rate)
-        if item.is_parent:
-            item.is_expanded = False
-
-    if len(context.scene.xml_rate_list) > 0:
-        context.scene.xml_rate_list_active_index = 0
+    _populate_list_from_parser(parser, context)
 
     _save_recent(filepath, parser.title, parser.year)
     _refresh_recent_cache()
@@ -1096,6 +1209,25 @@ def _do_import(filepath, context, report=None):
         context.scene.xml_rate_recent_path = filepath
     finally:
         _importing = False
+    return True
+
+
+def _do_import_ifc(schedule_id, context, report=None):
+    try:
+        from bonsai import tool
+        file = tool.Ifc.get()
+        if file is None:
+            if report:
+                report({'ERROR'}, "No IFC file loaded")
+            return False
+    except Exception as e:
+        if report:
+            report({'ERROR'}, str(e))
+        return False
+
+    parser = ParserIfcCostSchedule()
+    parser.parse_schedule(file, schedule_id)
+    _populate_list_from_parser(parser, context)
     return True
 
 
@@ -1476,8 +1608,14 @@ class RateListPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         row = layout.row(align=True)
-        row.prop(context.scene, "xml_rate_recent_path", text="")
-        row.operator(ImportRateList.bl_idname, text="", icon="ADD")
+        row.prop(context.scene, "rate_source_mode", expand=True)
+        row = layout.row(align=True)
+        if context.scene.rate_source_mode == 'FILE':
+            row.prop(context.scene, "xml_rate_recent_path", text="")
+            row.operator(ImportRateList.bl_idname, text="", icon="ADD")
+        else:
+            row.prop(context.scene, "ifc_rate_source_schedule", text="")
+            row.operator(IFC_OT_rate_source_refresh.bl_idname, text="", icon="FILE_REFRESH")
         row = layout.row()
         row.operator(CUSTOM_OT_collapse_to_level_0.bl_idname, text="Collapse")
         row.operator(CUSTOM_OT_collapse_to_level_1.bl_idname, text="To Level 1")
@@ -1524,12 +1662,25 @@ class RateListPanel(bpy.types.Panel):
                 box.label(text=row)
 
 
+class IFC_OT_rate_source_refresh(Operator):
+    bl_idname = "ifc_rate_source.refresh"
+    bl_label = "Refresh Schedules"
+
+    def execute(self, context):
+        _refresh_ifc_schedules_cache()
+        schedule_id = context.scene.ifc_rate_source_schedule
+        if schedule_id and schedule_id != '__NONE__':
+            _do_import_ifc(schedule_id, context)
+        return {"FINISHED"}
+
+
 classes = [
     XmlRateCustomUIList,
     CUSTOM_OT_toggle,
     CUSTOM_OT_collapse_to_level_0,
     CUSTOM_OT_collapse_to_level_1,
     CUSTOM_OT_expand_all,
+    IFC_OT_rate_source_refresh,
     UpdateActiveCostItem,
     ImportRateToActiveCostSchedule,
     ImportRateList,
@@ -1560,7 +1711,23 @@ def register():
         items=_get_recent_items,
         update=_on_recent_select,
     )
+    bpy.types.Scene.rate_source_mode = bpy.props.EnumProperty(
+        name="Source",
+        items=[
+            ('FILE', "External Rate List", "Load from XML or XPWE file"),
+            ('IFC_SCHEDULE', "Current Project Rate List", "Load from a cost schedule in the current IFC project"),
+        ],
+        default='FILE',
+        update=_on_source_mode_change,
+    )
+    bpy.types.Scene.ifc_rate_source_schedule = bpy.props.EnumProperty(
+        name="IFC Rate Schedule",
+        description="Select a cost schedule from the current IFC project as rate source",
+        items=_get_ifc_schedules,
+        update=_on_ifc_schedule_select,
+    )
     _refresh_recent_cache()
+    _refresh_ifc_schedules_cache()
 
 
 def unregister():
@@ -1571,6 +1738,8 @@ def unregister():
     del bpy.types.Scene.xml_rate_year
     del bpy.types.Scene.xml_rate_combine_desc
     del bpy.types.Scene.xml_rate_recent_path
+    del bpy.types.Scene.rate_source_mode
+    del bpy.types.Scene.ifc_rate_source_schedule
 
 
 register()
