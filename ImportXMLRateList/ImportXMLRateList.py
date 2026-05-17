@@ -24,7 +24,7 @@ class XmlRateItem(TypedDict):
     safety: float
 
 
-class XMLParser:
+class PriceListParser:
     title: str
     desc: str
     year: str
@@ -88,7 +88,7 @@ class XMLParser:
         return text.strip()
 
 
-class ParserXmlVeneto(XMLParser):
+class ParserXmlVeneto(PriceListParser):
     def parse_items(self, xml_content):
         xml_content = self.clean_xml_content(xml_content)
         root = self.get_stripped_xml_namespaces_root(xml_content)
@@ -183,25 +183,25 @@ class ParserXmlVeneto(XMLParser):
                         index += 1
 
 
-class ParserXmlBasilicata(XMLParser):
+class ParserXmlBasilicata(PriceListParser):
     def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
-class ParserXmlToscana(XMLParser):
+class ParserXmlToscana(PriceListParser):
     def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
-class ParserXmlLiguria(XMLParser):
+class ParserXmlLiguria(PriceListParser):
     def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
-class ParserXmlLombardia(XMLParser):
+class ParserXmlLombardia(PriceListParser):
     def parse_items(self, xml_content):
         xml_content = self.clean_xml_content(xml_content)
         root = self.get_stripped_xml_namespaces_root(xml_content)
@@ -360,13 +360,13 @@ class ParserXmlLombardia(XMLParser):
                 index += 1
 
 
-class ParserXmlSardegna(XMLParser):
+class ParserXmlSardegna(PriceListParser):
     def parse_items(self, xml_content):
         # TODO: implement custom parser
         return None
 
 
-class ParserXpwe(XMLParser):
+class ParserXpwe(PriceListParser):
     """Parser per formato XPWE (Primus e compatibili)."""
 
     @staticmethod
@@ -534,7 +534,7 @@ class ParserXpwe(XMLParser):
         return supercaps, caps
 
 
-class ParserXmlSix(XMLParser):
+class ParserXmlSix(PriceListParser):
     """Parser per formato XML SIX."""
 
     def __init__(self, language=None):
@@ -738,7 +738,7 @@ class ImportXMLRateList(Operator, ImportHelper):
 
     def execute(self, context):
         import os, re
-        xml_content = XMLParser.get_xml_content(self.filepath)
+        xml_content = PriceListParser.get_xml_content(self.filepath)
         parser_class = self.findXmlParser(xml_content)
         if parser_class is None:
             self.report(
