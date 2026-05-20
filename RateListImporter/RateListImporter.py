@@ -1160,6 +1160,7 @@ def _find_xml_parser(xml_content):
         'autore="Regione Sardegna"': ParserXmlToscana,
         'autore="Regione Liguria"': ParserXmlLiguria,
         "rks=": ParserXmlVeneto,
+        "<settore cod=": ParserXmlVeneto,
         "<pdf>Prezzario_Regione_Basilicata": ParserXmlBasilicata,
         "<autore>Regione Lombardia": ParserXmlLombardia,
         "<autore>LOM": ParserXmlLombardia,
