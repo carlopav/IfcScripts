@@ -101,8 +101,8 @@ class ParserXmlVeneto(PriceListParser):
                     "level": 0,
                     "is_parent": True,
                     "parents": "",
-                    "id": settore.attrib["cod"],
-                    "name": settore.attrib["desc"],
+                    "id": settore.attrib.get("cod", ""),
+                    "name": settore.attrib.get("desc", ""),
                     "desc": "",
                     "unit": "",
                     "value": 0.0,
@@ -114,15 +114,15 @@ class ParserXmlVeneto(PriceListParser):
             )
             n_settore = index
             index += 1
-            for capitolo in settore:
+            for capitolo in settore.findall("capitolo"):
                 self.xml_rate_list.append(
                     {
                         "index": index,
                         "level": 1,
                         "is_parent": True,
                         "parents": str(n_settore),
-                        "id": capitolo.attrib["cod"],
-                        "name": capitolo.attrib["desc"],
+                        "id": capitolo.attrib.get("cod", ""),
+                        "name": capitolo.attrib.get("desc", ""),
                         "desc": "",
                         "unit": "",
                         "value": 0.0,
@@ -134,16 +134,19 @@ class ParserXmlVeneto(PriceListParser):
                 )
                 n_capitolo = index
                 index += 1
-                for paragrafo in capitolo:
+                for paragrafo in capitolo.findall("paragrafo"):
+                    children = list(paragrafo)
+                    para_name = (children[0].text or "") if len(children) > 0 else ""
+                    para_desc = (children[1].text or "") if len(children) > 1 else ""
                     self.xml_rate_list.append(
                         {
                             "index": index,
                             "level": 2,
                             "is_parent": True,
                             "parents": str(n_settore) + "," + str(n_capitolo),
-                            "id": paragrafo.attrib["cod"],
-                            "name": paragrafo[0].text,
-                            "desc": paragrafo[1].text,
+                            "id": paragrafo.attrib.get("cod", ""),
+                            "name": para_name,
+                            "desc": para_desc,
                             "unit": "",
                             "value": 0.0,
                             "labor": 0.0,
@@ -156,6 +159,14 @@ class ParserXmlVeneto(PriceListParser):
                     n_paragrafo = index
                     index += 1
                     for prezzo in prezzi:
+                        try:
+                            val = float(prezzo.attrib.get("val", 0))
+                        except (ValueError, TypeError):
+                            val = 0.0
+                        try:
+                            labor = float(prezzo.attrib.get("man", 0)) * val / 100
+                        except (ValueError, TypeError):
+                            labor = 0.0
                         self.xml_rate_list.append(
                             {
                                 "index": index,
@@ -166,15 +177,12 @@ class ParserXmlVeneto(PriceListParser):
                                 + str(n_capitolo)
                                 + ","
                                 + str(n_paragrafo),
-                                "id": prezzo.attrib["cod"],
-                                "name": prezzo.text,
-                                "desc": paragrafo[1].text,
-                                "unit": prezzo.attrib["umi"],
-                                "value": float(prezzo.attrib["val"]),
-                                "labor": float(prezzo.attrib["man"])
-                                * float(prezzo.attrib["val"])
-                                / 100
-                                or 0.0,
+                                "id": prezzo.attrib.get("cod", ""),
+                                "name": prezzo.text or "",
+                                "desc": para_desc,
+                                "unit": prezzo.attrib.get("umi", ""),
+                                "value": val,
+                                "labor": labor,
                                 "equipment": 0.0,
                                 "materials": 0.0,
                                 "safety": 0.0,
