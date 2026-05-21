@@ -1437,13 +1437,14 @@ class AssignRateValue(*_IfcOperatorBase):
 
     def _execute(self, context):
         from bonsai import tool
+        from bonsai.core import cost as cost_core
         import bonsai.bim.module.cost.data
         selected = context.scene.xml_rate_list[context.scene.xml_rate_list_active_index]
         ifc_id = json.loads(selected.attributes).get("ifc_id", 0)
         file = tool.Ifc.get()
         cost_item = file.by_id(context.scene.BIMCostProperties.active_cost_item.ifc_definition_id)
         cost_rate = file.by_id(ifc_id)
-        tool.Ifc.run("cost.assign_cost_value", cost_item=cost_item, cost_rate=cost_rate)
+        cost_core.assign_cost_value(tool.Ifc, tool.Cost, cost_item=cost_item, cost_rate=cost_rate)
         bonsai.bim.module.cost.data.refresh()
         tool.Cost.load_cost_schedule_tree()
 
