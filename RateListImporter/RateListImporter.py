@@ -1327,25 +1327,35 @@ def create_cost_item(file, selected_rate, create_new_item=True, combine_desc=Fal
         "Description": desc,
     })
 
-    cost_value = tool.Ifc.run("cost.add_cost_value", parent=cost_item)
+    labor = float(rate_attrib["labor"])
+    equipment = float(rate_attrib["equipment"])
+    materials = float(rate_attrib["materials"])
+    safety = float(rate_attrib["safety"])
+    total_value = float(rate_attrib["value"])
 
-    if float(rate_attrib["labor"]) != 0.0:
-        tool.Ifc.run("cost.edit_cost_value", cost_value=cost_value, attributes={
-            "AppliedValue": rate_attrib["value"],
-            "ArithmeticOperator": "ADD",
-        })
-        sub_cost_value_1 = tool.Ifc.run("cost.add_cost_value", parent=cost_value)
-        sub_cost_value_2 = tool.Ifc.run("cost.add_cost_value", parent=cost_value)
-        tool.Ifc.run("cost.edit_cost_value",
-            cost_value=sub_cost_value_1,
-            attributes={"AppliedValue": rate_attrib["value"] - rate_attrib["labor"]},
-        )
-        tool.Ifc.run("cost.edit_cost_value",
-            cost_value=sub_cost_value_2,
-            attributes={"Category": "Labor", "AppliedValue": rate_attrib["labor"]},
-        )
+    components = [
+        ("Labor", labor),
+        ("Equipment", equipment),
+        ("Materials", materials),
+        ("Safety", safety),
+    ]
+    has_components = any(v != 0.0 for _, v in components)
+
+    if not has_components:
+        cost_value = tool.Ifc.run("cost.add_cost_value", parent=cost_item)
+        tool.Ifc.run("cost.edit_cost_value", cost_value=cost_value, attributes={"AppliedValue": round(total_value, 2)})
     else:
-        tool.Ifc.run("cost.edit_cost_value", cost_value=cost_value, attributes={"AppliedValue": rate_attrib["value"]})
+        remaining = round(total_value - sum(v for _, v in components), 2)
+        if remaining != 0.0:
+            cost_value = tool.Ifc.run("cost.add_cost_value", parent=cost_item)
+            tool.Ifc.run("cost.edit_cost_value", cost_value=cost_value, attributes={"AppliedValue": remaining})
+        for category, amount in components:
+            if amount != 0.0:
+                cost_value = tool.Ifc.run("cost.add_cost_value", parent=cost_item)
+                tool.Ifc.run("cost.edit_cost_value", cost_value=cost_value, attributes={
+                    "Category": category,
+                    "AppliedValue": round(amount, 2),
+                })
 
     bonsai.bim.module.cost.data.refresh()
     tool.Cost.load_cost_schedule_tree()
